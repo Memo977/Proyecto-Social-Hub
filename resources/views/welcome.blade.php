@@ -1,63 +1,43 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" x-data="{ dark: (localStorage.getItem('dark') !== null)
-                        ? localStorage.getItem('dark') === 'true'
-                        : window.matchMedia('(prefers-color-scheme: dark)').matches }" x-init="$watch('dark', v => {
-          localStorage.setItem('dark', v);
-          document.documentElement.classList.toggle('dark', v);
-      })">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Social Hub</title>
 
-    <!-- Early set dark (no flash) -->
-    <script>
-    (() => {
-        const s = localStorage.getItem('dark');
-        const d = (s !== null) ? s === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (d) document.documentElement.classList.add('dark');
-    })();
-    </script>
-
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
-    <!-- Alpine -->
-    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 
     <!-- Vite -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
 <body class="antialiased bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100">
-    <!-- Login/Register links -->
+    <!-- Login/Register + Toggle -->
     @if (Route::has('login'))
-    <div class="fixed top-0 right-0 z-50 p-6 text-right space-x-2">
+    <div class="fixed top-0 right-0 z-50 p-6 text-right flex items-center gap-3">
+        <!-- Toggle de tema (componente unificado) -->
+        <x-theme-toggle />
+
         @auth
-        <a href="{{ url('/dashboard') }}" class="text-sm font-medium underline hover:no-underline">Dashboard</a>
+        <a href="{{ url('/dashboard') }}" class="text-sm font-medium underline hover:no-underline">
+            Dashboard
+        </a>
         @else
-        <a href="{{ route('login') }}" class="text-sm font-medium underline hover:no-underline">Log in</a>
+        <a href="{{ route('login') }}" class="text-sm font-medium underline hover:no-underline">
+            Log in
+        </a>
         @if (Route::has('register'))
         <a href="{{ route('register') }}" class="inline-flex items-center px-3 py-1.5 rounded border text-sm
-                                  border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800">
+                              border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800">
             Register
         </a>
         @endif
         @endauth
     </div>
     @endif
-
-    <!-- Dark mode toggle -->
-    <div class="fixed top-4 left-4 z-50">
-        <button @click="dark = !dark" type="button" class="p-2 rounded-md bg-gray-200 hover:bg-gray-300
-                           dark:bg-gray-700 dark:hover:bg-gray-600">
-            <span x-show="!dark">🌞</span>
-            <span x-show="dark">🌙</span>
-            <span class="sr-only">Cambiar tema</span>
-        </button>
-    </div>
 
     <!-- Main content -->
     <div class="relative min-h-screen flex items-center justify-center">
@@ -90,13 +70,13 @@
 
                     <div class="flex gap-3 pt-2">
                         <a href="{{ route('register') }}" class="inline-flex items-center justify-center px-4 py-2 rounded-md
-                                      bg-gray-900 text-white hover:bg-black
-                                      dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white">
+                                  bg-gray-900 text-white hover:bg-black
+                                  dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white">
                             Empezar ahora
                         </a>
                         <a href="{{ route('login') }}" class="inline-flex items-center justify-center px-4 py-2 rounded-md
-                                      border border-gray-300 text-gray-700 hover:bg-gray-50
-                                      dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+                                  border border-gray-300 text-gray-700 hover:bg-gray-50
+                                  dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
                             Ya tengo cuenta
                         </a>
                     </div>
