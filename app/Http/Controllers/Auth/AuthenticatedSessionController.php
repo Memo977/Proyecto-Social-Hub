@@ -26,6 +26,23 @@ class AuthenticatedSessionController extends Controller
     {
         $request->authenticate();
 
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // 2. Si el usuario tiene 2FA activo, lo sacamos y redirigimos al challenge
+        if ($user && $user->two_factor_enabled) {
+            // Puedes usar cualquiera de estos tres, todos funcionan:
+            // $id = $user->getKey();
+            // $id = $user->getAuthIdentifier();
+            $id = $user->id;
+
+            Auth::logout();
+            $request->session()->put('login.id', $id);
+
+            // importante: NO regenerar sesión aquí, lo hará el challenge después
+            return redirect()->route('two-factor.challenge');
+        }
+
         $request->session()->regenerate();
 
         return redirect()->intended(route('dashboard', absolute: false));
