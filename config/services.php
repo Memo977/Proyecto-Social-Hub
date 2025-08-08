@@ -35,4 +35,22 @@ return [
         ],
     ],
 
+    'mastodon' => [
+        'client_id' => env('MASTODON_CLIENT_ID'),
+        'client_secret' => env('MASTODON_CLIENT_SECRET'),
+        'redirect' => env('MASTODON_REDIRECT_URI', 'http://localhost:8000/auth/mastodon/callback'),
+    ],
+
+    'reddit' => [
+        'client_id' => env('REDDIT_CLIENT_ID'),
+        'client_secret' => env('REDDIT_CLIENT_SECRET'),
+        'redirect' => env('REDDIT_REDIRECT_URI', 'http://localhost:8000/auth/reddit/callback'),
+    ],
+
+    'twitter' => [
+        'client_id' => env('TWITTER_CLIENT_ID'),
+        'client_secret' => env('TWITTER_CLIENT_SECRET'),
+        'redirect' => env('TWITTER_REDIRECT_URI', 'http://localhost:8000/auth/twitter/callback'),
+    ],
+
 ];
