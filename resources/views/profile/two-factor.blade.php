@@ -95,8 +95,13 @@
                             {{-- QR Code Section --}}
                             <div class="flex flex-col items-center">
                                 <div
-                                    class="inline-block rounded-xl bg-white p-4 shadow-lg border dark:bg-gray-900 dark:border-gray-600">
-                                    {!! QrCode::size(200)->generate($otpauth) !!}
+                                    class="inline-block rounded-xl bg-white p-6 shadow-lg border dark:bg-white dark:border-gray-600">
+                                    {!! QrCode::size(250)
+                                    ->backgroundColor(255,255,255)
+                                    ->color(0,0,0)
+                                    ->margin(2)
+                                    ->errorCorrection('M')
+                                    ->generate($otpauth) !!}
                                 </div>
                                 <div class="mt-4 text-center">
                                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
@@ -208,7 +213,7 @@
 
                     <div class="px-8 py-6">
                         <div class="grid gap-6 lg:grid-cols-2">
-                            {{-- Regenerar recovery codes --}}
+                            {{-- Regenerar recovery codes - VERSIÓN SEGURA --}}
                             <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
                                 <div class="flex items-center mb-4">
                                     <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400 mr-3" fill="none"
@@ -231,7 +236,21 @@
                                             <x-input-label for="password_recovery" :value="__('Contraseña')" />
                                             <x-text-input id="password_recovery" name="password" type="password"
                                                 class="mt-2 block w-full" required />
+                                            <x-input-error :messages="$errors->get('password')" class="mt-2" />
                                         </div>
+
+                                        <div>
+                                            <x-input-label for="otp_code_recovery" :value="__('Código OTP Actual')" />
+                                            <x-text-input id="otp_code_recovery" name="verification_code" type="text"
+                                                class="mt-2 block w-full text-center tracking-widest"
+                                                placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*"
+                                                required />
+                                            <p class="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
+                                                Código de 6 dígitos de tu aplicación authenticator
+                                            </p>
+                                            <x-input-error :messages="$errors->get('verification_code')" class="mt-2" />
+                                        </div>
+
                                         <x-primary-button
                                             class="w-full justify-center bg-indigo-600 hover:bg-indigo-700 focus:bg-indigo-700">
                                             {{ __('Regenerar Recovery Codes') }}
@@ -240,7 +259,7 @@
                                 </form>
                             </div>
 
-                            {{-- Desactivar 2FA --}}
+                            {{-- Desactivar 2FA - VERSIÓN MEJORADA --}}
                             <div
                                 class="bg-red-50 dark:bg-red-900/20 rounded-lg p-6 border border-red-200 dark:border-red-800">
                                 <div class="flex items-center mb-4">
@@ -260,12 +279,26 @@
                                     @csrf @method('DELETE')
                                     <div class="space-y-4">
                                         <div>
-                                            <x-input-label for="password_disable" :value="__('Contraseña')" />
+                                            <x-input-label for="password_disable" :value="__('Contraseña Actual')" />
                                             <x-text-input id="password_disable" name="password" type="password"
                                                 class="mt-2 block w-full" required />
+                                            <x-input-error :messages="$errors->get('password')" class="mt-2" />
                                         </div>
+
+                                        <div>
+                                            <x-input-label for="verification_code"
+                                                :value="__('Código de Verificación')" />
+                                            <x-text-input id="verification_code" name="verification_code" type="text"
+                                                class="mt-2 block w-full text-center tracking-widest"
+                                                placeholder="000000 o recovery code" required />
+                                            <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                Usa un código de 6 dígitos de tu authenticator o un recovery code.
+                                            </p>
+                                            <x-input-error :messages="$errors->get('verification_code')" class="mt-2" />
+                                        </div>
+
                                         <x-danger-button class="w-full justify-center">
-                                            {{ __('Desactivar 2FA') }}
+                                            {{ __('DESACTIVAR 2FA') }}
                                         </x-danger-button>
                                     </div>
                                 </form>

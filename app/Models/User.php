@@ -50,4 +50,19 @@ class User extends Authenticatable implements MustVerifyEmail
             'two_factor_confirmed_at' => 'datetime',
         ];
     }
-}
+
+    public function socialAccounts()
+    {
+        return $this->hasMany(\App\Models\SocialAccount::class);
+    }
+
+    public function posts()
+    {
+        return $this->hasMany(\App\Models\Post::class);
+    }
+
+    public function publicationSchedules()
+    {
+        return $this->hasMany(\App\Models\PublicationSchedule::class);
+    }
+}   
