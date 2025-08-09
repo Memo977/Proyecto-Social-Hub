@@ -36,10 +36,13 @@ return [
     ],
 
     'mastodon' => [
-        'client_id' => env('MASTODON_CLIENT_ID'),
-        'client_secret' => env('MASTODON_CLIENT_SECRET'),
-        'redirect' => env('MASTODON_REDIRECT_URI', 'http://localhost:8000/auth/mastodon/callback'),
-    ],
+    'domain'        => env('MASTODON_DOMAIN', 'https://mastodon.social'),
+    'client_id'     => env('MASTODON_ID'),
+    'client_secret' => env('MASTODON_SECRET'),
+    'redirect'      => env('MASTODON_REDIRECT', env('APP_URL').'/auth/mastodon/callback'),
+    // Scopes mínimos
+    'scope'         => ['read', 'write'],
+],
 
     'reddit' => [
         'client_id' => env('REDDIT_CLIENT_ID'),

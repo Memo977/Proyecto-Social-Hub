@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a6ec407d3687f6748d2058e692b46d52",
+    "content-hash": "c3398c04f2b9e70e8c015f725004d1c0",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -4010,6 +4010,70 @@
                 "source": "https://github.com/ramsey/uuid/tree/4.9.0"
             },
             "time": "2025-06-25T14:20:11+00:00"
+        },
+        {
+            "name": "revolution/socialite-mastodon",
+            "version": "1.5.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/invokable/socialite-mastodon.git",
+                "reference": "f27b6dff55d03bc62170c6287b8a1a721e22277e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/invokable/socialite-mastodon/zipball/f27b6dff55d03bc62170c6287b8a1a721e22277e",
+                "reference": "f27b6dff55d03bc62170c6287b8a1a721e22277e",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "laravel/socialite": "*",
+                "php": "^8.0"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.22",
+                "orchestra/testbench": "^9.0||^10.0",
+                "revolution/laravel-mastodon-api": "^3.1"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Revolution\\Socialite\\Mastodon\\MastodonServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Revolution\\Socialite\\Mastodon\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "kawax",
+                    "email": "kawaxbiz@gmail.com"
+                }
+            ],
+            "description": "Socialite for Mastodon",
+            "keywords": [
+                "laravel",
+                "mastodon",
+                "socialite"
+            ],
+            "support": {
+                "source": "https://github.com/invokable/socialite-mastodon/tree/1.5.3"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/invokable",
+                    "type": "github"
+                }
+            ],
+            "time": "2025-06-07T01:38:55+00:00"
         },
         {
             "name": "simplesoftwareio/simple-qrcode",
