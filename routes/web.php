@@ -9,6 +9,10 @@ use App\Http\Controllers\TwoFactorController;
 // OAuth Mastodon
 use App\Http\Controllers\Auth\MastodonAuthController;
 
+// OAuth Reddit
+use App\Http\Controllers\Auth\RedditOAuthController;
+
+
 Route::get('/', function () {
     return view('welcome');
 });
@@ -37,6 +41,16 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/auth/mastodon/callback', [MastodonAuthController::class, 'callback'])
             ->name('oauth.mastodon.callback');
+    });
+
+    // ===== OAuth Reddit =====
+
+    Route::middleware(['verified'])->group(function () {
+        Route::get('/oauth/reddit/redirect', [RedditOAuthController::class, 'redirect'])
+            ->name('oauth.reddit.redirect');
+
+        Route::get('/oauth/reddit/callback', [RedditOAuthController::class, 'callback'])
+            ->name('oauth.reddit.callback');
     });
 
 });

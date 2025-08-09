@@ -47,7 +47,7 @@ return [
     'reddit' => [
         'client_id' => env('REDDIT_CLIENT_ID'),
         'client_secret' => env('REDDIT_CLIENT_SECRET'),
-        'redirect' => env('REDDIT_REDIRECT_URI', 'http://localhost:8000/auth/reddit/callback'),
+        'redirect' => env('REDDIT_REDIRECT_URI', env('APP_URL').'/oauth/reddit/callback'),
     ],
 
     'twitter' => [
