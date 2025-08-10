@@ -3,7 +3,7 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
-// 👇 importa el controlador de 2FA (gestión desde el perfil)
+// importa el controlador de 2FA (gestión desde el perfil)
 use App\Http\Controllers\TwoFactorController;
 
 // OAuth Mastodon
@@ -11,6 +11,8 @@ use App\Http\Controllers\Auth\MastodonAuthController;
 
 // OAuth Reddit
 use App\Http\Controllers\Auth\RedditOAuthController;
+
+use App\Http\Controllers\ScheduleController;
 
 
 Route::get('/', function () {
@@ -51,6 +53,11 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/oauth/reddit/callback', [RedditOAuthController::class, 'callback'])
             ->name('oauth.reddit.callback');
+    });
+
+    // ===== CRUD de Horarios =====
+     Route::middleware('verified')->group(function () {
+        Route::resource('schedules', ScheduleController::class)->except(['show']);
     });
 
 });
