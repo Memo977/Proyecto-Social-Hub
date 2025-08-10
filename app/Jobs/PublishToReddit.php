@@ -1,19 +1,34 @@
 <?php
 
-public function handle(\App\Services\RedditClient $client): void
+namespace App\Jobs;
+
+use App\Services\RedditClient;
+use App\Models\SocialAccount;
+
+class PublishToReddit
 {
-    $account = SocialAccount::where('user_id', $this->post->user_id)
-        ->where('provider', 'reddit')->first();
+    public $post;
 
-    if (!$account) return;
+    public function __construct($post)
+    {
+        $this->post = $post;
+    }
 
-    $client->submitPost($account, [
-        'sr'    => $this->post->reddit_subreddit, // campo en tu formulario/config
-        'title' => $this->post->title,
-        'kind'  => $this->post->link ? 'link' : 'self',
-        'text'  => $this->post->content,
-        'url'   => $this->post->link,
-        'nsfw'  => (bool)$this->post->nsfw,
-        'spoiler' => (bool)$this->post->spoiler,
-    ]);
+    public function handle(RedditClient $client): void
+    {
+        $account = SocialAccount::where('user_id', $this->post->user_id)
+            ->where('provider', 'reddit')->first();
+
+        if (!$account) return;
+
+        $client->submitPost($account, [
+            'sr'    => $this->post->reddit_subreddit,
+            'title' => $this->post->title,
+            'kind'  => $this->post->link ? 'link' : 'self',
+            'text'  => $this->post->content,
+            'url'   => $this->post->link,
+            'nsfw'  => (bool)$this->post->nsfw,
+            'spoiler' => (bool)$this->post->spoiler,
+        ]);
+    }
 }

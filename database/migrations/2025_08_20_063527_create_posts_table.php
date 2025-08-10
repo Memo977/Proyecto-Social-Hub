@@ -21,6 +21,7 @@ return new class extends Migration
             // tipo de envío
             $table->string('mode')->default('now'); // now|queue|at
             $table->timestamp('scheduled_at')->nullable(); // para 'at'
+            $table->timestamp('published_at')->nullable();
             $table->timestamps();
             $table->index(['user_id','status']);
             $table->index(['user_id','mode','scheduled_at']);
