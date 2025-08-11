@@ -16,12 +16,14 @@ class Post extends Model
         'status',
         'mode',
         'scheduled_at',
-        'published_at'
+        'published_at',
+        'meta',
     ];
 
     protected $casts = [
         'scheduled_at' => 'datetime',
         'published_at' => 'datetime',
+        'meta'         => 'array',
     ];
 
     public function user()

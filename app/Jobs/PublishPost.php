@@ -42,28 +42,78 @@ class PublishPost implements ShouldQueue
     public function handle(): void
     {
         try {
-            /** @var Post $post */
-            $post = Post::query()->with('targets')->findOrFail($this->postId);
+            /** @var \App\Models\Post $post */
+            $post = \App\Models\Post::query()
+                ->with(['targets.socialAccount']) // eager load para saber el provider
+                ->findOrFail($this->postId);
 
-            // Aquí solo registramos y delegamos por proveedor.
-            // En el commit 16 implementaremos la publicación real.
+            // Marcar estado transitorio
+            if ($post->status !== 'publishing') {
+                $post->update(['status' => 'publishing']);
+            }
+
             foreach ($post->targets as $target) {
-                $provider = $target->provider; // 'mastodon' | 'reddit' | etc.
-
-                if ($provider === 'reddit') {
-                    PublishToReddit::dispatch($post->id, $target->toArray());
+                $account = $target->socialAccount; // relación
+                if (!$account) {
+                    Log::warning('PublishPost: target sin socialAccount', ['target_id' => $target->id]);
+                    
+                    // Marcar target como fallido
+                    $target->update([
+                        'status' => 'failed',
+                        'error' => 'No se encontró la cuenta social asociada'
+                    ]);
+                    continue;
                 }
 
-                if ($provider === 'mastodon') {
-                    PublishToMastodon::dispatch($post->id, $target->toArray());
+                $provider = $account->provider; // 'mastodon' | 'reddit' | ...
+
+                Log::info('PublishPost: Dispatching job', [
+                    'post_id' => $post->id,
+                    'target_id' => $target->id,
+                    'provider' => $provider
+                ]);
+
+                if ($provider === 'reddit') {
+                    Log::info('PublishPost: A punto de despachar PublishToReddit', [
+                        'post_id' => $post->id,
+                        'target_id' => $target->id,
+                        'account_id' => $account->id
+                    ]);
+                    \App\Jobs\PublishToReddit::dispatch($post->id, $target->id); // ✅ Pasamos solo el ID
+                    Log::info('PublishPost: PublishToReddit despachado exitosamente');
+                } elseif ($provider === 'mastodon') {
+                    \App\Jobs\PublishToMastodon::dispatch($post->id, $target->toArray()); // ✅ Mastodon sigue usando array
+                } else {
+                    Log::warning('PublishPost: provider no soportado', [
+                        'provider' => $provider,
+                        'target_id' => $target->id,
+                    ]);
+                    
+                    // Marcar target como fallido
+                    $target->update([
+                        'status' => 'failed',
+                        'error' => "Provider '{$provider}' no soportado"
+                    ]);
                 }
             }
 
             Log::info('PublishPost encoló sub-jobs por proveedor', [
                 'post_id' => $post->id,
-                'targets' => $post->targets->pluck('provider'),
+                // solo para el log: listamos providers reales
+                'providers' => $post->targets->map(fn($t) => optional($t->socialAccount)->provider)->filter()->values(),
             ]);
-        } catch (ModelNotFoundException $e) {
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::error('PublishPost: Post no encontrado', [
+                'post_id' => $this->postId,
+                'error' => $e->getMessage()
+            ]);
+            $this->fail($e);
+        } catch (\Throwable $e) {
+            Log::error('PublishPost: Error inesperado', [
+                'post_id' => $this->postId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             $this->fail($e);
         }
     }

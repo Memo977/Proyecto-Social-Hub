@@ -1,8 +1,16 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
-            {{ __('Dashboard') }}
-        </h2>
+        <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
+                {{ __('Dashboard') }}
+            </h2>
+
+            <a href="{{ route('posts.create') }}" class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium
+                  bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring
+                  focus:ring-blue-500/50 dark:bg-blue-500 dark:hover:bg-blue-600">
+                Nueva publicación
+            </a>
+        </div>
     </x-slot>
 
     <div class="py-12">
