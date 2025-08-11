@@ -2,33 +2,65 @@
 
 namespace App\Jobs;
 
-use App\Services\RedditClient;
+use App\Models\Post;
 use App\Models\SocialAccount;
+use App\Services\RedditClient;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
-class PublishToReddit
+class PublishToReddit implements ShouldQueue
 {
-    public $post;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public function __construct($post)
+    /** @var int */
+    public $postId;
+
+    public function __construct(int $postId)
     {
-        $this->post = $post;
+        $this->postId = $postId;
     }
 
     public function handle(RedditClient $client): void
     {
-        $account = SocialAccount::where('user_id', $this->post->user_id)
-            ->where('provider', 'reddit')->first();
+        $post = Post::find($this->postId);
+        if (!$post) {
+            Log::warning('PublishToReddit: post no encontrado.');
+            return;
+        }
 
-        if (!$account) return;
+        $account = SocialAccount::where('user_id', $post->user_id)
+            ->where('provider', 'reddit')
+            ->first();
 
-        $client->submitPost($account, [
-            'sr'    => $this->post->reddit_subreddit,
-            'title' => $this->post->title,
-            'kind'  => $this->post->link ? 'link' : 'self',
-            'text'  => $this->post->content,
-            'url'   => $this->post->link,
-            'nsfw'  => (bool)$this->post->nsfw,
-            'spoiler' => (bool)$this->post->spoiler,
+        if (!$account) {
+            Log::info('PublishToReddit: el usuario no tiene cuenta de Reddit conectada.', [
+                'user_id' => $post->user_id,
+                'post_id' => $post->id,
+            ]);
+            return;
+        }
+
+        $payload = [
+            'sr'      => $post->reddit_subreddit,
+            'title'   => $post->title,
+            'kind'    => $post->link ? 'link' : 'self',
+            'text'    => $post->link ? null : $post->content,
+            'url'     => $post->link ?: null,
+            'nsfw'    => (bool)$post->nsfw,
+            'spoiler' => (bool)$post->spoiler,
+        ];
+
+        $payload = array_filter($payload, fn($v) => !is_null($v));
+
+        $client->submitPost($account, $payload);
+
+        Log::info('PublishToReddit: publicación enviada.', [
+            'post_id'   => $post->id,
+            'subreddit' => $payload['sr'] ?? '(none)',
         ]);
     }
 }
