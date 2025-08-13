@@ -26,14 +26,14 @@ class PublishToMastodon implements ShouldQueue
 
     public function handle(): void
     {
-        $post = \App\Models\Post::find($this->postId);
+        $post = Post::find($this->postId);
         if (!$post) return;
 
         $targetId = $this->target['id'] ?? null;
         $target   = $targetId ? \App\Models\PostTarget::find($targetId) : null;
         if (!$target) return;
 
-        $account = \App\Models\SocialAccount::find($this->target['social_account_id'] ?? null);
+        $account = SocialAccount::find($this->target['social_account_id'] ?? null);
         if (!$account || $account->provider !== 'mastodon') return;
 
         $base = rtrim((string)$account->instance_domain, '/');

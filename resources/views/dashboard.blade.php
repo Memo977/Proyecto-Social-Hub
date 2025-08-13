@@ -11,6 +11,25 @@
                 Nueva publicación
             </a>
         </div>
+
+        <div class="flex items-center gap-2">
+            <a href="{{ route('posts.queue') }}" class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium
+              bg-gray-200 text-gray-800 hover:bg-gray-300
+              dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">
+                Pendientes
+            </a>
+            <a href="{{ route('posts.history') }}" class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium
+              bg-gray-200 text-gray-800 hover:bg-gray-300
+              dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">
+                Histórico
+            </a>
+            <a href="{{ route('posts.create') }}" class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium
+              bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring
+              focus:ring-blue-500/50 dark:bg-blue-500 dark:hover:bg-blue-600">
+                Nueva publicación
+            </a>
+        </div>
+
     </x-slot>
 
     <div class="py-12">

@@ -17,6 +17,8 @@ use App\Http\Controllers\ScheduleController;
 
 use App\Http\Controllers\PostController;
 
+use App\Http\Controllers\PostHistoryController;
+
 
 
 Route::get('/', function () {
@@ -70,7 +72,9 @@ Route::middleware('auth')->group(function () {
     Route::middleware(['verified'])->group(function () {
         Route::get('/posts/create', [PostController::class, 'create'])->name('posts.create');
         Route::post('/posts',        [PostController::class, 'store'])->name('posts.store');
+
+        Route::get('/posts/queue',   [PostHistoryController::class, 'queue'])->name('posts.queue');
+        Route::get('/posts/history', [PostHistoryController::class, 'history'])->name('posts.history');
     });
-    
 });
 require __DIR__ . '/auth.php';

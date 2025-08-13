@@ -15,6 +15,13 @@
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                         {{ __('Dashboard') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('posts.queue')" :active="request()->routeIs('posts.queue')">
+                        Pendientes
+                    </x-nav-link>
+                    <x-nav-link :href="route('posts.history')" :active="request()->routeIs('posts.history')">
+                        Histórico
+                    </x-nav-link>
+
                 </div>
             </div>
 
