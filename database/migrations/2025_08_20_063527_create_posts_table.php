@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('posts', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->text('content');
+            $table->text('content')->nullable();
             $table->string('media_url')->nullable();
             // estado general del post dentro de la app
             $table->string('status')->default('draft'); // draft|queued|scheduled|sent|failed

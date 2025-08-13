@@ -25,7 +25,7 @@ class PublishToReddit implements ShouldQueue
 
     public function __construct(int $postId, int $targetId)
     {
-        $this->postId  = $postId;
+        $this->postId   = $postId;
         $this->targetId = $targetId;
     }
 
@@ -49,8 +49,8 @@ class PublishToReddit implements ShouldQueue
             return;
         }
 
-        // Verificar que el token no haya expirado
-        if ($account->expires_at && $account->expires_at->isPast()) {
+        // Verificar expiración (el cliente también refresca si aplica)
+        if ($account->expires_at && $account->expires_at->isPast() && !$account->refresh_token) {
             $target->status = 'failed';
             $target->error  = 'Token de acceso expirado';
             $target->save();
@@ -62,20 +62,17 @@ class PublishToReddit implements ShouldQueue
         $meta  = $post->meta['reddit'] ?? [];
         $sr    = trim($meta['subreddit'] ?? '');
         $title = trim((string)($meta['title'] ?? $post->title ?? ''));
-        $kind  = (string)($meta['kind'] ?? 'self');     // 'self' | 'link' (o 'image' si detectamos)
-        $url   = trim((string)($meta['url'] ?? $post->link ?? ''));
+        $kind  = (string)($meta['kind'] ?? 'self');     // 'self' | 'link' (image ya no)
 
-        // Si viene 'link' pero la URL es imagen directa, publicamos como 'image'
-        $isDirectImage = $url !== '' && preg_match(
-            '/\.(jpe?g|png|gif|webp)$/i',
-            parse_url($url, PHP_URL_PATH) ?? ''
-        );
-        if ($kind === 'link' && $isDirectImage) {
-            $kind = 'image';
+        // Compatibilidad: si viene 'image', lo mapeamos a 'self'
+        if ($kind === 'image') {
+            $kind = 'self';
         }
 
+        $url = trim((string)($meta['url'] ?? $post->link ?? ''));
+
         // Validación
-        if ($sr === '' || $title === '' || !in_array($kind, ['self', 'link', 'image'], true)) {
+        if ($sr === '' || $title === '' || !in_array($kind, ['self', 'link'], true)) {
             $msg = 'Faltan datos obligatorios para Reddit: subreddit, title o kind.';
             Log::warning('PublishToReddit: ' . $msg, compact('sr', 'title', 'kind', 'url'));
             $target->status = 'failed';
@@ -93,104 +90,12 @@ class PublishToReddit implements ShouldQueue
             return;
         }
 
-        if ($kind === 'image' && $url === '') {
-            $msg = 'URL es obligatoria para posts de tipo image.';
-            Log::warning('PublishToReddit: ' . $msg);
-            $target->status = 'failed';
-            $target->error  = $msg;
-            $target->save();
-            return;
-        }
-
         try {
-            // Payload según tipo
-            $payload = [
-                'sr'       => $sr,
-                'title'    => $title,
-                'kind'     => $kind,       // 'self' | 'link' | 'image'
-                'api_type' => 'json',      // respuesta JSON
-            ];
-
             if ($kind === 'self') {
-                $payload['text'] = $post->content ?? '';
+                $this->handleSelfPost($post, $target, $account, $sr, $title);
             } else {
-                // Para 'link' y 'image' enviamos URL
-                $payload['url'] = $url;
+                $this->handleLinkPost($post, $target, $account, $sr, $title, $url);
             }
-
-            Log::info('PublishToReddit: Enviando payload', [
-                'post_id'   => $post->id,
-                'target_id' => $target->id,
-                'payload'   => $payload
-            ]);
-
-            // Cliente HTTP
-            $client = new \GuzzleHttp\Client([
-                'base_uri' => 'https://oauth.reddit.com',
-                'headers'  => [
-                    'Authorization' => 'Bearer ' . $account->access_token,
-                    'User-Agent'    => config('services.reddit.user_agent', 'SocialHub/1.0'),
-                    'Accept'        => 'application/json',
-                ],
-                'http_errors' => false,
-                'timeout'     => 30,
-            ]);
-
-            // Submit
-            $response   = $client->post('/api/submit', ['form_params' => $payload]);
-            $statusCode = $response->getStatusCode();
-            $body       = (string) $response->getBody();
-
-            Log::info('PublishToReddit: Respuesta de Reddit', [
-                'status_code' => $statusCode,
-                'body'        => $body
-            ]);
-
-            if ($statusCode !== 200) {
-                throw new \Exception("Error HTTP {$statusCode}: {$body}");
-            }
-
-            $data = json_decode($body, true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception('Respuesta JSON inválida de Reddit: ' . json_last_error_msg());
-            }
-
-            // Errores de Reddit
-            if (isset($data['json']['errors']) && !empty($data['json']['errors'])) {
-                $errors   = $data['json']['errors'];
-                $errorMsg = 'Errores de Reddit: ' . json_encode($errors);
-                throw new \Exception($errorMsg);
-            }
-
-            // Confirmar creación
-            if (!isset($data['json']['data']['id'])) {
-                throw new \Exception('Reddit no devolvió ID del post creado');
-            }
-
-            $redditId  = $data['json']['data']['id'];
-            $permalink = $data['json']['data']['url'] ?? null;
-
-            // Marcar como publicado
-            $target->status           = 'published';
-            $target->provider_post_id = $redditId;
-            $target->published_at     = now();
-            $target->error            = null;
-            $target->save();
-
-            // Si todos los targets están publicados, marcar Post
-            $remaining = $post->targets()->where('status', '!=', 'published')->count();
-            if ($remaining === 0) {
-                $post->status       = 'published';
-                $post->published_at = now();
-                $post->save();
-            }
-
-            Log::info('PublishToReddit: Publicado exitosamente', [
-                'post_id'   => $post->id,
-                'reddit_id' => $redditId,
-                'subreddit' => $sr,
-                'permalink' => $permalink
-            ]);
         } catch (\Throwable $e) {
             Log::error('PublishToReddit: Error al publicar', [
                 'post_id'   => $post->id ?? null,
@@ -205,5 +110,177 @@ class PublishToReddit implements ShouldQueue
 
             throw $e;
         }
+    }
+
+    /**
+     * Publica self-post. Si hay media_url (imagen), la embebe con RTJSON.
+     */
+    private function handleSelfPost(Post $post, PostTarget $target, SocialAccount $account, string $sr, string $title): void
+    {
+        /** @var RedditClient $reddit */
+        $reddit = app(RedditClient::class);
+
+        $text = trim((string)($post->content ?? ''));
+        $mediaUrl = trim((string)($post->media_url ?? ''));
+
+        $imageData = null;
+        $mimeType  = null;
+
+        if ($mediaUrl !== '') {
+            Log::info('PublishToReddit: intentando usar media_url para self con imagen', [
+                'post_id' => $post->id,
+                'url'     => $mediaUrl,
+            ]);
+
+            $imageData = $this->downloadImage($mediaUrl);
+            if ($imageData) {
+                $finfo    = new \finfo(FILEINFO_MIME_TYPE);
+                $mimeType = $finfo->buffer($imageData) ?: null;
+            }
+        }
+
+        // Si logramos descargar y el MIME es imagen -> asset + RTJSON
+        if ($imageData && $mimeType && str_starts_with($mimeType, 'image/')) {
+            $extension = match ($mimeType) {
+                'image/jpeg' => 'jpg',
+                'image/png'  => 'png',
+                'image/gif'  => 'gif',
+                'image/webp' => 'webp',
+                default      => 'jpg'
+            };
+            $filename = 'reddit_image_' . time() . '.' . $extension;
+
+            Log::info('PublishToReddit: subiendo media asset (self rtjson)', [
+                'filename'  => $filename,
+                'mime_type' => $mimeType,
+                'size'      => strlen($imageData),
+            ]);
+
+            $assetId = $reddit->uploadMediaAsset($account, $filename, $mimeType, $imageData);
+
+            // Pequeña espera para evitar que el asset recién subido aún no esté listo
+            usleep(400_000); // 0.4s
+
+            // Construye el documento RTJSON: texto (si hay) + imagen
+            $document = [];
+            if ($text !== '') {
+                $document[] = [
+                    'e' => 'par',
+                    'c' => [['e' => 'text', 't' => $text]],
+                ];
+            }
+            $document[] = [
+                'e' => 'par',
+                'c' => [['e' => 'media', 'id' => $assetId]],
+            ];
+
+            $data = $reddit->submitSelfWithRichtext($account, $sr, $title, $document);
+
+            $this->markAsPublished($post, $target, $sr, $data);
+            return;
+        }
+
+        // Self sin imagen (o media_url no era imagen) -> submit clásico con 'text'
+        $payload = [
+            'sr'          => $sr,
+            'title'       => $title,
+            'kind'        => 'self',
+            'text'        => $text,
+            'sendreplies' => true,
+        ];
+
+        Log::info('PublishToReddit: self simple (texto)', [
+            'post_id' => $post->id,
+            'len'     => strlen($text),
+            'media_url' => $mediaUrl,
+            'mime'    => $mimeType,
+        ]);
+
+        $data = $reddit->submitPost($account, $payload);
+
+        $this->markAsPublished($post, $target, $sr, $data);
+    }
+
+    private function handleLinkPost(Post $post, PostTarget $target, SocialAccount $account, string $sr, string $title, string $url): void
+    {
+        /** @var RedditClient $reddit */
+        $reddit = app(RedditClient::class);
+
+        $payload = [
+            'sr'          => $sr,
+            'title'       => $title,
+            'kind'        => 'link',
+            'url'         => $url,
+            'sendreplies' => true,
+        ];
+
+        Log::info('PublishToReddit: link', [
+            'post_id' => $post->id,
+            'url'     => $url,
+        ]);
+
+        $data = $reddit->submitPost($account, $payload);
+
+        $this->markAsPublished($post, $target, $sr, $data);
+    }
+
+    private function markAsPublished(Post $post, PostTarget $target, string $sr, array $data): void
+    {
+        $redditId  = $data['id'] ?? null;
+        $permalink = $data['url'] ?? null;
+
+        if (!$redditId) {
+            throw new \Exception('Reddit no devolvió ID del post creado');
+        }
+
+        // Marcar como publicado
+        $target->status = 'published';
+        $target->provider_post_id = $redditId;
+        $target->published_at = now();
+        $target->error = null;
+        $target->save();
+
+        // Si todos los targets están publicados, marcar Post
+        $remaining = $post->targets()->where('status', '!=', 'published')->count();
+        if ($remaining === 0) {
+            $post->status = 'published';
+            $post->published_at = now();
+            $post->save();
+        }
+
+        Log::info('PublishToReddit: Publicado exitosamente', [
+            'post_id'   => $post->id,
+            'reddit_id' => $redditId,
+            'subreddit' => $sr,
+            'permalink' => $permalink
+        ]);
+    }
+
+    private function downloadImage(string $url): ?string
+    {
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 30, 'headers' => ['User-Agent' => 'SocialHub/1.0 (image-fetch)']]);
+            $response = $client->get($url);
+
+            if ($response->getStatusCode() === 200) {
+                return (string) $response->getBody();
+            }
+
+            return null;
+        } catch (\Throwable $e) {
+            Log::error('PublishToReddit: Error descargando imagen', [
+                'url' => $url,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    private function isImageUrl(?string $url): bool
+    {
+        if (!$url) return false;
+        $clean = explode('?', $url)[0];
+        $ext = strtolower(pathinfo($clean, PATHINFO_EXTENSION));
+        return in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true);
     }
 }

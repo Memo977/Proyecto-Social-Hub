@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Auth;
 
 // importa el controlador de 2FA (gestión desde el perfil)
 use App\Http\Controllers\TwoFactorController;
@@ -17,7 +18,11 @@ use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\PostController;
 
 
+
 Route::get('/', function () {
+    if (Auth::check()) {
+        return redirect()->route('dashboard');
+    }
     return view('welcome');
 });
 
@@ -58,7 +63,7 @@ Route::middleware('auth')->group(function () {
     });
 
     // ===== CRUD de Horarios =====
-     Route::middleware('verified')->group(function () {
+    Route::middleware('verified')->group(function () {
         Route::resource('schedules', ScheduleController::class)->except(['show']);
     });
 
@@ -66,7 +71,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/posts/create', [PostController::class, 'create'])->name('posts.create');
         Route::post('/posts',        [PostController::class, 'store'])->name('posts.store');
     });
-
+    
 });
-
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

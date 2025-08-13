@@ -12,20 +12,23 @@ class Post extends Model
     protected $fillable = [
         'user_id',
         'content',
+        'title',
         'media_url',
-        'status',
-        'mode',
+        'link',
+        'meta',
+        'mode',          // now | scheduled | queue (queue se usará en el commit 21)
+        'status',        // draft|pending|scheduled|queued|published|failed
         'scheduled_at',
         'published_at',
-        'meta',
     ];
 
     protected $casts = [
+        'meta'         => 'array',
         'scheduled_at' => 'datetime',
         'published_at' => 'datetime',
-        'meta'         => 'array',
     ];
 
+    // Relaciones
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -36,23 +39,12 @@ class Post extends Model
         return $this->hasMany(PostTarget::class);
     }
 
-    /* Scopes útiles para cola/histórico */
-    public function scopeOfUser($q, $userId)
-    {
-        return $q->where('user_id', $userId);
-    }
-    public function scopeQueued($q)
-    {
-        return $q->where('status', 'queued');
-    }
-    public function scopeScheduled($q)
-    {
-        return $q->where('status', 'scheduled');
-    }
+    // Alcances útiles
     public function scopePending($q)
     {
         return $q->whereIn('status', ['queued', 'scheduled']);
     }
+
     public function scopePublished($q)
     {
         return $q->where('status', 'published');
