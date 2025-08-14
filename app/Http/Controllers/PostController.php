@@ -12,6 +12,12 @@ use Carbon\Carbon;
 
 class PostController extends Controller
 {
+    public function __construct()
+    {
+        // Aplica PostPolicy a las acciones estándar (create/store ya quedan cubiertas)
+        $this->authorizeResource(\App\Models\Post::class, 'post');
+    }
+
     public function create()
     {
         $user = auth()->user();
@@ -27,6 +33,7 @@ class PostController extends Controller
 
     public function store(Request $request)
     {
+        // Policy: create() se valida automáticamente via authorizeResource
         $user = $request->user();
 
         // 1) Validación base
@@ -124,6 +131,11 @@ class PostController extends Controller
             ]);
 
             foreach ($selectedAccounts as $acc) {
+                // Seguridad extra (defensa en profundidad) por si cambian el query de arriba
+                if ((int)$acc->user_id !== (int)$user->id) {
+                    continue;
+                }
+
                 PostTarget::create([
                     'post_id'           => $post->id,
                     'social_account_id' => $acc->id,

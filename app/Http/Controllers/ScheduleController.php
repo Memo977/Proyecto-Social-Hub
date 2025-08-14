@@ -8,6 +8,12 @@ use Illuminate\Validation\Rule;
 
 class ScheduleController extends Controller
 {
+    public function __construct()
+    {
+        // Aplica PublicationSchedulePolicy a las acciones del resource
+        $this->authorizeResource(\App\Models\PublicationSchedule::class, 'schedule');
+    }
+
     public function index()
     {
         $schedules = auth()->user()
@@ -26,6 +32,8 @@ class ScheduleController extends Controller
 
     public function store(Request $request)
     {
+        // Policy: create() se valida automáticamente via authorizeResource
+
         $validated = $request->validate([
             'day_of_week' => ['required', 'integer', 'between:0,6'],
             'time' => [
@@ -48,13 +56,13 @@ class ScheduleController extends Controller
 
     public function edit(PublicationSchedule $schedule)
     {
-        $this->authorizeAccess($schedule);
+        // Policy: 'update' ya es resuelta por authorizeResource en rutas de edición
         return view('schedules.edit', compact('schedule'));
     }
 
     public function update(Request $request, PublicationSchedule $schedule)
     {
-        $this->authorizeAccess($schedule);
+        // Policy: 'update' ya se valida automáticamente via authorizeResource
 
         $validated = $request->validate([
             'day_of_week' => ['required', 'integer', 'between:0,6'],
@@ -76,17 +84,10 @@ class ScheduleController extends Controller
 
     public function destroy(PublicationSchedule $schedule)
     {
-        $this->authorizeAccess($schedule);
+        // Policy: 'delete' ya se valida automáticamente via authorizeResource
         $schedule->delete();
 
         return redirect()->route('schedules.index')
             ->with('success', 'Horario eliminado.');
-    }
-
-    private function authorizeAccess(PublicationSchedule $schedule)
-    {
-        if ($schedule->user_id !== auth()->id()) {
-            abort(403);
-        }
     }
 }

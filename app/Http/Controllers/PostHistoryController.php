@@ -14,6 +14,9 @@ class PostHistoryController extends Controller
      */
     public function history(Request $request)
     {
+        // Policy general: ver posts del usuario
+        $this->authorize('viewAny', \App\Models\Post::class);
+
         $user = $request->user();
 
         $q = Post::with(['targets.socialAccount'])
@@ -73,6 +76,9 @@ class PostHistoryController extends Controller
      */
     public function queue(Request $request)
     {
+        // Policy general: ver posts del usuario
+        $this->authorize('viewAny', \App\Models\Post::class);
+
         $user = $request->user();
 
         $q = Post::with(['targets.socialAccount'])

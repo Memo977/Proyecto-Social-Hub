@@ -7,10 +7,12 @@
 
     <div class="py-6">
         <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
+            @can('create', App\Models\PublicationSchedule::class)
             <a href="{{ route('schedules.create') }}"
                 class="mb-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg">
                 + Nuevo Horario
             </a>
+            @endcan
 
             @if (session('success'))
             <div class="mb-4 p-3 bg-green-100 text-green-700 rounded">
@@ -33,13 +35,18 @@
                             <td class="px-4 py-2">{{ $s->day_name }}</td>
                             <td class="px-4 py-2">{{ $s->time }}</td>
                             <td class="px-4 py-2 flex gap-2">
+                                @can('update', $s)
                                 <a href="{{ route('schedules.edit', $s) }}"
                                     class="px-3 py-1 bg-yellow-500 text-white rounded">Editar</a>
+                                @endcan
+
+                                @can('delete', $s)
                                 <form action="{{ route('schedules.destroy', $s) }}" method="POST"
                                     onsubmit="return confirm('¿Eliminar horario?');">
                                     @csrf @method('DELETE')
                                     <button class="px-3 py-1 bg-red-600 text-white rounded">Eliminar</button>
                                 </form>
+                                @endcan
                             </td>
                         </tr>
                         @empty

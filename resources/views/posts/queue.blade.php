@@ -10,11 +10,13 @@
                           dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">
                     Histórico
                 </a>
+                @can('create', App\Models\Post::class)
                 <a href="{{ route('posts.create') }}" class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium
                           bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring
                           focus:ring-blue-500/50 dark:bg-blue-500 dark:hover:bg-blue-600">
                     Nueva publicación
                 </a>
+                @endcan
             </div>
         </div>
     </x-slot>
@@ -71,15 +73,13 @@
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-200">
                                     @if($post->scheduled_at)
                                     {{ optional($post->scheduled_at)->timezone(config('app.timezone'))->format('d/m/Y H:i') }}
-                                    <span
-                                        class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs
-                                                         bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
+                                    <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs
+                                            bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
                                         programada
                                     </span>
                                     @else
-                                    <span
-                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs
-                                                         bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs
+                                            bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
                                         próximo horario
                                     </span>
                                     @endif

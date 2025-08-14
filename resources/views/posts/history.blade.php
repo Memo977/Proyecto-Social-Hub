@@ -10,11 +10,13 @@
                           dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">
                     Pendientes
                 </a>
+                @can('create', App\Models\Post::class)
                 <a href="{{ route('posts.create') }}" class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium
                           bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring
                           focus:ring-blue-500/50 dark:bg-blue-500 dark:hover:bg-blue-600">
                     Nueva publicación
                 </a>
+                @endcan
             </div>
         </div>
     </x-slot>

@@ -31,6 +31,7 @@
                 </div>
                 @endif
 
+                @can('create', App\Models\Post::class)
                 <form method="POST" action="{{ route('posts.store') }}">
                     @csrf
 
@@ -97,9 +98,7 @@
 
                         {{-- Mastodon --}}
                         <div class="mb-4">
-                            <p class="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
-                                Mastodon
-                            </p>
+                            <p class="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Mastodon</p>
                             @forelse(($accounts['mastodon'] ?? []) as $acc)
                             <label class="flex items-center gap-2 mb-2">
                                 <input type="checkbox" name="targets[]" value="{{ $acc->id }}"
@@ -115,9 +114,7 @@
 
                         {{-- Reddit --}}
                         <div>
-                            <p class="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
-                                Reddit
-                            </p>
+                            <p class="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Reddit</p>
 
                             @forelse(($accounts['reddit'] ?? []) as $acc)
                             <label class="flex items-center gap-2 mb-2">
@@ -191,6 +188,11 @@
                         </x-primary-button>
                     </div>
                 </form>
+                @else
+                <div class="p-4 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200">
+                    No tienes permisos para crear publicaciones.
+                </div>
+                @endcan
             </div>
         </div>
     </div>
