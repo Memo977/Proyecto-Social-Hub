@@ -9,12 +9,12 @@ use App\Models\SocialAccount;
 use App\Models\PublicationSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Collection;
 use Carbon\Carbon;
+use App\Services\NextRunService;
 
 class PostController extends Controller
 {
-    public function __construct()
+    public function __construct(private NextRunService $nextRun)
     {
         // Aplica PostPolicy a las acciones estándar (create/store ya quedan cubiertas)
         $this->authorizeResource(\App\Models\Post::class, 'post');
@@ -53,7 +53,7 @@ class PostController extends Controller
             'targets.*' => ['integer'],
 
             'mode'             => 'required|in:now,scheduled,queue',
-            // Para "Programar", ahora exigimos escoger un horario existente del usuario
+            // Para "Programar", exigimos escoger un horario existente del usuario
             'schedule_option'  => ['nullable', 'integer', 'required_if:mode,scheduled'],
 
             // Campos opcionales/condicionados para Reddit
@@ -77,7 +77,7 @@ class PostController extends Controller
             return back()->withErrors(['targets' => 'No se seleccionaron destinos válidos.'])->withInput();
         }
 
-        $needsReddit = $selectedAccounts->contains(fn ($acc) => $acc->provider === 'reddit');
+        $needsReddit = $selectedAccounts->contains(fn($acc) => $acc->provider === 'reddit');
 
         // Si hay Reddit entre los targets, forzamos validaciones específicas
         if ($needsReddit) {
@@ -123,17 +123,20 @@ class PostController extends Controller
                     ->withInput();
             }
 
-            // Convertir el (day_of_week + time) del horario a la próxima ocurrencia (Carbon)
-            $scheduledAt = $this->nextOccurrenceFromDowAndTime((int) $slot->day_of_week, (string) $slot->time);
+            // Convertir (day_of_week + time) del horario a la próxima ocurrencia (Carbon)
+            $scheduledAt = $this->nextRun->nextOccurrenceFromDowAndTime(
+                (int) $slot->day_of_week,
+                (string) $slot->time
+            );
+
             if (!$scheduledAt) {
                 return back()
                     ->withErrors(['schedule_option' => 'No fue posible calcular la próxima ocurrencia del horario seleccionado.'])
                     ->withInput();
             }
-        }
-        elseif ($mode === 'queue') {
-            // Calcular el próximo slot; si no hay horarios, NO creamos el post
-            $scheduledAt = $this->nextRunForUser((int) $user->id);
+        } elseif ($mode === 'queue') {
+            // Calcular el próximo slot libre; si no hay horarios, NO creamos el post
+            $scheduledAt = $this->nextRun->nextForUser((int) $user->id);
             if (!$scheduledAt) {
                 return back()
                     ->withErrors(['mode' => 'No tienes horarios de publicación. Crea al menos uno en Horarios para usar la cola.'])
@@ -160,11 +163,11 @@ class PostController extends Controller
                 'meta'         => $meta,
                 'mode'         => $mode,
                 'status'       => $mode === 'scheduled' ? 'scheduled' : ($mode === 'queue' ? 'queued' : 'pending'),
-                'scheduled_at' => in_array($mode, ['scheduled','queue'], true) ? $scheduledAt : null,
+                'scheduled_at' => in_array($mode, ['scheduled', 'queue'], true) ? $scheduledAt : null,
             ]);
 
             foreach ($selectedAccounts as $acc) {
-                if ((int)$acc->user_id !== (int)$user->id) continue;
+                if ((int) $acc->user_id !== (int) $user->id) continue;
 
                 PostTarget::create([
                     'post_id'           => $post->id,
@@ -190,65 +193,5 @@ class PostController extends Controller
         // Modo now
         PublishPost::dispatch($post->id);
         return redirect()->route('dashboard')->with('status', '¡Post enviado a publicar!');
-    }
-
-    /**
-     * Calcula la próxima DateTime (Carbon) del usuario según sus PublicationSchedule.
-     * Busca el primer slot > ahora (hoy o próximos 14 días); si no, primer slot de la semana entrante.
-     */
-    private function nextRunForUser(int $userId): ?Carbon
-    {
-        $tz  = config('app.timezone', 'UTC');
-        $now = Carbon::now($tz);
-
-        /** @var Collection<int, PublicationSchedule> $slots */
-        $slots = PublicationSchedule::query()
-            ->where('user_id', $userId)
-            ->orderBy('day_of_week')
-            ->orderBy('time')
-            ->get();
-
-        if ($slots->isEmpty()) return null;
-
-        // Probar hoy + 13 días (2 semanas)
-        for ($addDays = 0; $addDays < 14; $addDays++) {
-            $candidateDay = $now->copy()->addDays($addDays);
-            $dow = (int) $candidateDay->dayOfWeek; // 0..6 (0=Dom)
-            foreach ($slots as $slot) {
-                if ((int)$slot->day_of_week !== $dow) continue;
-                [$h, $m, $s] = array_pad(explode(':', $slot->time), 3, 0);
-                $candidate = $candidateDay->copy()->setTime((int)$h,(int)$m,(int)$s);
-                if ($candidate->greaterThan($now)) return $candidate;
-            }
-        }
-
-        // Fallback: primer slot de la lista la semana entrante
-        $first = $slots->first();
-        return $this->nextOccurrenceFromDowAndTime((int)$first->day_of_week, (string)$first->time, addWeek: true);
-    }
-
-    /**
-     * Desde un (día_semana, hora) retorna la próxima ocurrencia como Carbon.
-     * $dayOfWeek: 0=Dom,1=Lun,...6=Sáb. $time: 'HH:MM:SS'
-     */
-    private function nextOccurrenceFromDowAndTime(int $dayOfWeek, string $time, bool $addWeek = false): ?Carbon
-    {
-        $tz  = config('app.timezone', 'UTC');
-        $now = Carbon::now($tz);
-
-        $base = $addWeek ? $now->copy()->addWeek() : $now->copy();
-
-        // Mover base al próximo $dayOfWeek dentro de esta/ próxima semana
-        $daysToAdd = ($dayOfWeek - (int)$base->dayOfWeek + 7) % 7;
-        $candidateDay = $base->copy()->addDays($daysToAdd);
-
-        [$h,$m,$s] = array_pad(explode(':', $time), 3, 0);
-        $candidate = $candidateDay->setTime((int)$h,(int)$m,(int)$s);
-
-        // Si cayó en el pasado (mismo día pero hora pasada), empuja una semana
-        if ($candidate->lessThanOrEqualTo($now)) {
-            $candidate = $candidate->addWeek();
-        }
-        return $candidate;
     }
 }
