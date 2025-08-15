@@ -50,24 +50,60 @@
                                 <span class="text-sm text-gray-700 dark:text-gray-200">Programar (fecha/hora
                                     exacta)</span>
                             </label>
-                            <label class="inline-flex items-center gap-2 opacity-50 cursor-not-allowed"
-                                title="Se habilita en otro commit">
-                                <input type="radio" name="mode" value="queue" disabled>
-                                <span class="text-sm text-gray-700 dark:text-gray-200">A la cola (próximo
-                                    horario)</span>
+                            <label class="inline-flex items-center gap-2">
+                                <input type="radio" name="mode" value="queue" x-model="mode"
+                                    @checked(old('mode')==='queue' )>
+                                <span class="text-sm text-gray-700 dark:text-gray-200">
+                                    A la cola (próximo horario)
+                                </span>
                             </label>
                         </div>
                     </div>
 
                     {{-- Fecha/Hora para programada --}}
+                    {{-- Programada: elegir uno de mis horarios --}}
                     <div class="mb-6" x-show="mode === 'scheduled'">
-                        <x-input-label for="scheduled_at" value="Fecha y hora (tu zona horaria)" />
-                        <x-text-input id="scheduled_at" name="scheduled_at" type="datetime-local"
-                            class="mt-1 block w-full" value="{{ old('scheduled_at') }}" />
-                        <p class="text-xs text-gray-500 mt-1">
-                            Sugerencia: APP_TIMEZONE=America/Costa_Rica en tu .env
+                        <x-input-label for="schedule_option" value="Selecciona uno de tus horarios" />
+
+                        @php
+                        // Mapear día a etiqueta: orden L K M J V S D, pero aquí sólo mostramos etiqueta del slot
+                        $dayLabels = [
+                        0 => 'Domingo', 1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles',
+                        4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado'
+                        ];
+                        @endphp
+
+                        @if(($schedules ?? collect())->isNotEmpty())
+                        <select id="schedule_option" name="schedule_option"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                            <option value="">— Selecciona un horario —</option>
+                            @foreach($schedules as $slot)
+                            @php
+                            // Mostrar HH:MM
+                            $hhmm = \Illuminate\Support\Str::of($slot->time)->substr(0,5);
+                            @endphp
+                            <option value="{{ $slot->id }}" @selected(old('schedule_option')==$slot->id)>
+                                {{ $dayLabels[$slot->day_of_week] }} — {{ $hhmm }}
+                            </option>
+                            @endforeach
+                        </select>
+                        @error('schedule_option')
+                        <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
+                        @enderror
+
+                        <p class="text-xs text-gray-500 mt-2">
+                            El post se programará para la <strong>próxima ocurrencia</strong> de ese día y hora (según
+                            tu zona horaria).
                         </p>
+                        @else
+                        <div
+                            class="mt-1 p-3 rounded-md bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-800 dark:text-amber-200">
+                            Aún no tienes horarios. <a href="{{ route('schedules.create') }}" class="underline">Crea al
+                                menos uno</a> para poder programar.
+                        </div>
+                        @endif
                     </div>
+
 
                     {{-- Contenido --}}
                     <div class="mb-6">
