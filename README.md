@@ -1,61 +1,140 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# SocialHub
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+**Social Hub** es una aplicación web en **Laravel** para **gestionar y programar publicaciones** en múltiples redes sociales.  
+Incluye integración con **Mastodon** y **Reddit**, autenticación **2FA (TOTP)**, horarios de publicación y **colas** para ejecución en background.
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Laravel-12.x-FF2D20?logo=laravel&logoColor=white" />
+  <img src="https://img.shields.io/badge/PHP-8.2+-777BB4?logo=php&logoColor=white" />
+  <img src="https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white" />
+  <img src="https://img.shields.io/badge/Vite-7+-646CFF?logo=vite&logoColor=white" />
+  <img src="https://img.shields.io/badge/MySQL-8+-4479A1?logo=mysql&logoColor=white" />
 </p>
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Características principales
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- 🔑 **Breeze + 2FA (TOTP)** para seguridad
+- 🌐 **OAuth** con:
+  - Mastodon (instancia configurable)
+  - Reddit (apps tipo *script*)
+- 🗓️ **Horarios** configurables por usuario
+- 📤 Modos de publicación: **now**, **scheduled**, **queue**
+- ⚙️ **Workers** con Laravel Queue (driver `database`)
+- 📊 Vistas para **pendientes** e **historial**
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 🌐 Integraciones OAuth
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+| Proveedor | Logo | Estado |
+|-----------|------|--------|
+| Mastodon  | <img src="https://img.shields.io/badge/Mastodon-6364FF?logo=mastodon&logoColor=white&style=for-the-badge" width="120"/> | ✅ Implementado |
+| Reddit    | <img src="https://img.shields.io/badge/Reddit-FF4500?logo=reddit&logoColor=white&style=for-the-badge" width="120"/> | ✅ Implementado |
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+---
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## ⚡ Instalación rápida
 
-## Laravel Sponsors
+> Requisitos: **PHP 8.2+**, **Composer**, **Node 20+**, **MySQL/MariaDB**.  
+> Redis es opcional (la cola usa `database` por defecto).
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+# 1) Clonar proyecto
+git clone <repo-url>
+cd social-hub
 
-### Premium Partners
+# 2) Instalar dependencias
+composer install
+npm install
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+# 3) Configurar entorno
+cp .env.example .env
+php artisan key:generate
 
-## Contributing
+# 4) Migrar y seedear
+php artisan migrate --seed
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+---
 
-## Code of Conduct
+## Desarrollo local
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Ejecuta en paralelo:
 
-## Security Vulnerabilities
+```bash
+php artisan serve        # Servidor PHP (http://localhost:8000)
+npm run dev              # Frontend (Vite)
+php artisan queue:work   # Worker de colas
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+> **Nota**: adapta los comandos a tu plataforma (local, VM, Docker, servidor real, WSL, etc.).
 
-## License
+---
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Variables de entorno (ejemplo)
+
+| Clave                      | Ejemplo / Nota |
+|---------------------------|----------------|
+| `APP_NAME`                | `SocialHub` |
+| `APP_URL`                 | `http://localhost:8000` |
+| `DB_CONNECTION`           | `mysql` |
+| `DB_HOST` / `DB_PORT`     | `127.0.0.1` / `3306` |
+| `DB_DATABASE`             | `social_hub` |
+| `DB_USERNAME` / `DB_PASSWORD` | `root` / *(según tu entorno)* |
+| `QUEUE_CONNECTION`        | `database` |
+| `CACHE_STORE`             | `database` |
+| `MAIL_*`                  | SMTP de tu preferencia (Mailtrap recomendado) |
+| `MASTODON_DOMAIN`         | `https://mastodon.social` (o tu instancia) |
+| `MASTODON_ID` / `MASTODON_SECRET` | *(credenciales OAuth)* |
+| `MASTODON_REDIRECT`       | `${APP_URL}/auth/mastodon/callback` |
+| `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | *(credenciales OAuth)* |
+| `REDDIT_REDIRECT_URI`     | `${APP_URL}/oauth/reddit/callback` |
+| `REDDIT_USER_AGENT`       | `SocialHub/1.0 (by u/TU_USUARIO)` *(obligatorio en Reddit)* |
+
+> Crea tus apps en **Mastodon** y **Reddit**, y define los **redirect URIs** exactamente como arriba.
+
+---
+
+## Rutas principales
+
+| Ruta                        | Descripción                          |
+|-----------------------------|--------------------------------------|
+| `/dashboard`                | Dashboard principal                  |
+| `/user/two-factor`          | Activar 2FA TOTP                     |
+| `/auth/mastodon/redirect`   | OAuth Mastodon                       |
+| `/oauth/reddit/redirect`    | OAuth Reddit                         |
+| `/posts/create`             | Crear publicación                    |
+| `/posts/queue`              | Ver publicaciones en cola            |
+| `/posts/history`            | Historial de publicaciones           |
+| `/schedules`                | CRUD de horarios                     |
+
+---
+
+## Flujo de publicación
+
+1. ✍️ Crear publicación y seleccionar destinos (Mastodon/Reddit).  
+2. ⏱️ Elegir **modo**: `now` (inmediata), `scheduled` (fecha/hora), `queue` (siguiente slot por horario).  
+3. 🗃️ Se crean `posts` + `post_targets`.  
+4. ⚡ Job `PublishPost` encola **sub-jobs**: `PublishToMastodon`, `PublishToReddit`.  
+5. ✅ El **worker** publica y actualiza estados (pendiente → publicado/failed).
+
+---
+
+## Troubleshooting
+
+- **Callback OAuth inválido** → revisa que `APP_URL` + ruta de callback coincidan con lo registrado en el proveedor.  
+- **La cola no procesa** → confirma `QUEUE_CONNECTION=database` y que `php artisan queue:work` esté activo; verifica tablas `jobs`/`failed_jobs`.  
+- **Reddit exige User-Agent** → define `REDDIT_USER_AGENT` con tu usuario.  
+- **Scopes** → asegúrate de solicitar los necesarios (ej.: `identity`, `submit` para Reddit).
+
+---
+
+## Contribuir
+
+1. Crea un branch desde `main`.  
+2. Aplica cambios + tests.  
+3. Abre un Pull Request describiendo el impacto.  
+
+---
