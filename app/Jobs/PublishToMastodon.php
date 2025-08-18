@@ -3,108 +3,84 @@
 namespace App\Jobs;
 
 use App\Models\Post;
-use App\Models\SocialAccount;
+use App\Models\PostTarget;
+use App\Services\MastodonClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use App\Services\MastodonClient;
 
 class PublishToMastodon implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $postId;
-    public array $target; // ej. ['id' => ..., 'provider' => 'mastodon', 'social_account_id' => ...]
+    public int $targetId;
 
-    public function __construct(int $postId, array $target)
+    public function __construct(int $postId, int $targetId)
     {
         $this->postId = $postId;
-        $this->target = $target;
+        $this->targetId = $targetId;
     }
 
     public function handle(): void
     {
         $post = Post::find($this->postId);
-        if (!$post) {
-            Log::warning('PublishToMastodon: Post no encontrado', ['post_id' => $this->postId]);
+        if (!$post || $post->canceled_at) {
+            Log::info('PublishToMastodon: post cancelado o no encontrado', ['post_id' => $this->postId]);
             return;
         }
 
-        $targetId = $this->target['id'] ?? null;
-        $target   = $targetId ? \App\Models\PostTarget::find($targetId) : null;
-        if (!$target) {
-            Log::warning('PublishToMastodon: PostTarget no encontrado', ['target_id' => $targetId]);
+        $target = PostTarget::find($this->targetId);
+        if (!$target || !$target->socialAccount) {
+            Log::warning('PublishToMastodon: target/account no encontrado', ['target_id' => $this->targetId]);
             return;
         }
-
-        // Idempotencia básica: si ya se publicó, no lo repitamos
-        if ($target->status === 'published' && $target->provider_post_id) {
-            Log::info('PublishToMastodon: target ya publicado, omitiendo', [
-                'post_id' => $post->id,
-                'target_id' => $target->id,
-            ]);
-            return;
-        }
-
-        $account = SocialAccount::find($this->target['social_account_id'] ?? null);
-        if (!$account || $account->provider !== 'mastodon') {
-            Log::warning('PublishToMastodon: SocialAccount inválido o no es mastodon', [
-                'social_account_id' => $this->target['social_account_id'] ?? null,
-            ]);
-            return;
-        }
-
-        if (empty($account->instance_domain)) {
-            Log::warning('PublishToMastodon: instance_domain vacío.');
-            return;
-        }
-
-        $client = new MastodonClient();
 
         try {
-            // Publica (el MastodonClient refresca el token si ya venció)
-            $data = $client->postStatus($account, [
-                'status' => $post->content,
-                // 'visibility' => 'public',
-                // 'scheduled_at' => null,
-                // 'sensitive' => false,
+            /** @var MastodonClient $client */
+            $client = app(MastodonClient::class);
+
+            $payload = [
+                'status'       => (string) $post->content,
+                'visibility'   => 'public',     // ajusta si guardas otra visibilidad
+                'scheduled_at' => null,         // aquí publicamos ya; la programación la hace PublishPost con delay()
+            ];
+
+            $resp = $client->postStatus($target->socialAccount, $payload);
+
+            $target->update([
+                'status'           => 'published',
+                'provider_post_id' => $resp['id'] ?? null,
+                'published_at'     => now(),
+                'error'            => null,
             ]);
 
-            // Actualiza el target como publicado
-            $target->status = 'published';
-            $target->provider_post_id = $data['id'] ?? null;
-            $target->published_at = now();
-            $target->error = null;
-            $target->save();
+            $this->maybeMarkPostAsPublished($post);
+            Log::info('PublishToMastodon: OK', ['post_id' => $post->id, 'id' => $resp['id'] ?? null]);
 
-            // Si ya no quedan pendientes, marca el Post como publicado
-            $remaining = $post->targets()->where('status', '!=', 'published')->count();
-            if ($remaining === 0) {
-                $post->status = 'published';
-                $post->published_at = now();
-                $post->save();
-            }
-
-            Log::info('PublishToMastodon: publicado', [
-                'post_id'   => $post->id,
-                'target_id' => $target->id,
-                'status_id' => $data['id'] ?? null,
-            ]);
         } catch (\Throwable $e) {
-            $target->status = 'failed';
-            $target->error  = $e->getMessage();
-            $target->save();
-
-            Log::error('PublishToMastodon: error al publicar', [
-                'post_id'   => $post->id,
-                'target_id' => $target->id,
-                'error'     => $e->getMessage(),
+            $target->update([
+                'status' => 'failed',
+                'error'  => $e->getMessage(),
             ]);
+            Log::error('PublishToMastodon: error', ['post_id' => $this->postId, 'error' => $e->getMessage()]);
+        }
+    }
 
-            throw $e; // re-lanzamos para que el worker gestione reintentos si están configurados
+    protected function maybeMarkPostAsPublished(Post $post): void
+    {
+        $total     = $post->targets()->count();
+        $published = $post->targets()->where('status','published')->count();
+        $failed    = $post->targets()->where('status','failed')->count();
+
+        if ($published > 0 && $published + $failed === $total) {
+            $post->update([
+                'status'       => 'published',
+                'published_at' => now(),
+            ]);
         }
     }
 }

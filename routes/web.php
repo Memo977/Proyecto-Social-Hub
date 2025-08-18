@@ -75,6 +75,13 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/posts/queue',   [PostHistoryController::class, 'queue'])->name('posts.queue');
         Route::get('/posts/history', [PostHistoryController::class, 'history'])->name('posts.history');
+
+        Route::get('/posts/{post}/edit', [PostController::class, 'edit'])
+            ->middleware('can:update,post')->name('posts.edit');
+        Route::put('/posts/{post}', [PostController::class, 'update'])
+            ->middleware('can:update,post')->name('posts.update');
+        Route::delete('/posts/{post}', [PostController::class, 'destroy'])
+            ->middleware('can:delete,post')->name('posts.destroy');
     });
 });
 require __DIR__ . '/auth.php';

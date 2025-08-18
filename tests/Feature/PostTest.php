@@ -55,5 +55,5 @@ it('validates reddit fields when selecting a reddit account', function () {
     ]);
 
     $resp->assertRedirect(route('posts.create'));
-    $resp->assertSessionHasErrors(['reddit_subreddit','reddit_title','reddit_kind']);
+    $resp->assertSessionHasErrors(['reddit_subreddit','title','reddit_kind']);
 });

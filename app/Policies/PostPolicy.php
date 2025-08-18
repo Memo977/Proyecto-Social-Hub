@@ -24,13 +24,13 @@ class PostPolicy
 
     public function update(User $user, Post $post): bool
     {
-        // Solo el dueño puede actualizar y no si ya fue publicado
-        return $post->user_id === $user->id && $post->status !== 'published';
+        // Solo dueño y solo si sigue editable (queued/scheduled, no published/cancelado)
+        return $post->user_id === $user->id && $post->isEditable();
     }
 
     public function delete(User $user, Post $post): bool
     {
-        // Solo el dueño puede borrar y no si ya fue publicado
-        return $post->user_id === $user->id && $post->status !== 'published';
+        // Solo dueño y solo si sigue deletable (mismas reglas)
+        return $post->user_id === $user->id && $post->isDeletable();
     }
 }

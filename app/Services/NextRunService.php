@@ -44,8 +44,9 @@ class NextRunService
 
             foreach ($slots as $slot) {
                 $slotDow = (int) $slot->day_of_week;
-                // Normaliza 7 => 0 (Domingo) por si acaso
-                if ($slotDow === 7) { $slotDow = 0; }
+                if ($slotDow === 7) {
+                    $slotDow = 0;
+                } // normaliza
                 if ($slotDow !== $dow) continue;
 
                 [$h, $m, $s] = array_pad(explode(':', (string) $slot->time), 3, 0);
@@ -82,8 +83,10 @@ class NextRunService
         $base ??= Carbon::now($this->tz);
 
         $dow = (int) $dayOfWeek;
-        if ($dow === 7) { $dow = 0; }           // normaliza
-        $dow = max(0, min(6, $dow));            // clamp defensivo 0..6
+        if ($dow === 7) {
+            $dow = 0;
+        }           // normaliza
+        $dow = max(0, min(6, $dow));            // clamp 0..6
 
         $daysToAdd = ($dow - (int) $base->dayOfWeek + 7) % 7;
         $candidateDay = $base->copy()->addDays($daysToAdd);
@@ -111,21 +114,22 @@ class NextRunService
         return Post::query()
             ->where('user_id', $userId)
             ->whereBetween('scheduled_at', [$start, $end])
-            ->whereIn('status', ['pending', 'scheduled', 'queued']) // incluye cola
+            ->whereIn('status', ['scheduled', 'queued']) // 👈 estados reales usados en posts
             ->exists();
-        // Nota: ajusta los estados si usas otros nombres
     }
 
     protected function firstFreeSlotOfNextWeek(int $userId, Collection $slots, Carbon $now): ?Carbon
     {
         if ($slots->isEmpty()) return null;
 
-        $baseNextWeek = $now->copy()->addWeek()->startOfWeek(Carbon::SUNDAY); // 0=Dom
+        $baseNextWeek = $now->copy()->addWeek()->startOfWeek(Carbon::SUNDAY); // 0=Domingo
         $first = null;
 
         foreach ($slots as $slot) {
             $slotDow = (int) $slot->day_of_week;
-            if ($slotDow === 7) { $slotDow = 0; }
+            if ($slotDow === 7) {
+                $slotDow = 0;
+            }
             $slotDow = max(0, min(6, $slotDow));
 
             $day = $baseNextWeek->copy()->addDays($slotDow);
@@ -140,5 +144,27 @@ class NextRunService
         }
 
         return $first;
+    }
+
+    public function nextFromSchedule(PublicationSchedule $slot, ?Carbon $base = null): ?Carbon
+    {
+        $base ??= Carbon::now($this->tz);
+        $userId = (int) $slot->user_id;
+
+        // Intentamos semana por semana hasta 8 semanas
+        for ($i = 0; $i < 8; $i++) {
+            $probeBase = $base->copy()->addWeeks($i);
+            $when = $this->nextOccurrenceFromDowAndTime(
+                (int) $slot->day_of_week,
+                (string) $slot->time,
+                $probeBase
+            );
+
+            if (!$this->isOccupied($userId, $when)) {
+                return $when;
+            }
+        }
+
+        return null;
     }
 }

@@ -15,17 +15,18 @@ class Post extends Model
         'title',
         'media_url',
         'link',
-        'meta',
-        'mode',          // now | scheduled | queue (queue se usará en el commit 21)
-        'status',        // draft|pending|scheduled|queued|published|failed
+        'status',        // expected: 'queued'|'scheduled'|'published'|'failed'|...
+        'mode',          // expected: 'now'|'queue'|'schedule'
         'scheduled_at',
         'published_at',
+        'meta',          // JSON (reddit extras, etc.)
     ];
 
     protected $casts = [
         'meta'         => 'array',
         'scheduled_at' => 'datetime',
         'published_at' => 'datetime',
+        'canceled_at'  => 'datetime',
     ];
 
     // Relaciones
@@ -39,19 +40,37 @@ class Post extends Model
         return $this->hasMany(PostTarget::class);
     }
 
-    // Alcances útiles
+    // Scopes
     public function scopePending($q)
     {
-        return $q->whereIn('status', ['queued', 'scheduled']);
+        return $q->whereIn('status', ['queued', 'scheduled'])->whereNull('canceled_at');
     }
 
     public function scopePublished($q)
     {
-        return $q->where('status', 'published');
+        return $q->where('status', 'published')->whereNull('canceled_at');
     }
 
     public function scopeHistoryOfUser($q, $userId)
     {
         return $q->where('user_id', $userId)->whereNotNull('published_at');
+    }
+
+    public function scopeActive($q)
+    {
+        return $q->whereNull('canceled_at');
+    }
+
+    // Reglas de edición/eliminación
+    public function isEditable(): bool
+    {
+        return in_array($this->status, ['queued','scheduled'])
+            && is_null($this->published_at)
+            && is_null($this->canceled_at);
+    }
+
+    public function isDeletable(): bool
+    {
+        return $this->isEditable();
     }
 }

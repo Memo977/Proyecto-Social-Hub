@@ -45,43 +45,38 @@
                                 <span class="text-sm text-gray-700 dark:text-gray-200">Publicar ahora</span>
                             </label>
                             <label class="inline-flex items-center gap-2">
-                                <input type="radio" name="mode" value="scheduled" x-model="mode"
-                                    @checked(old('mode')==='scheduled' )>
+                                <input type="radio" name="mode" value="schedule" x-model="mode"
+                                    @checked(old('mode')==='schedule' )>
                                 <span class="text-sm text-gray-700 dark:text-gray-200">Programar (fecha/hora
                                     exacta)</span>
                             </label>
                             <label class="inline-flex items-center gap-2">
                                 <input type="radio" name="mode" value="queue" x-model="mode"
                                     @checked(old('mode')==='queue' )>
-                                <span class="text-sm text-gray-700 dark:text-gray-200">
-                                    A la cola (próximo horario)
-                                </span>
+                                <span class="text-sm text-gray-700 dark:text-gray-200">A la cola (próximo
+                                    horario)</span>
                             </label>
                         </div>
                     </div>
 
-                    {{-- Fecha/Hora para programada --}}
                     {{-- Programada: elegir uno de mis horarios --}}
-                    <div class="mb-6" x-show="mode === 'scheduled'">
+                    <div class="mb-6" x-show="mode === 'schedule'">
                         <x-input-label for="schedule_option" value="Selecciona uno de tus horarios" />
 
                         @php
-                        // Mapear día a etiqueta: orden L K M J V S D, pero aquí sólo mostramos etiqueta del slot
                         $dayLabels = [
                         0 => 'Domingo', 1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles',
                         4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado'
                         ];
+                        $mySchedules = ($schedules ?? collect());
                         @endphp
 
-                        @if(($schedules ?? collect())->isNotEmpty())
+                        @if($mySchedules->isNotEmpty())
                         <select id="schedule_option" name="schedule_option"
                             class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
                             <option value="">— Selecciona un horario —</option>
-                            @foreach($schedules as $slot)
-                            @php
-                            // Mostrar HH:MM
-                            $hhmm = \Illuminate\Support\Str::of($slot->time)->substr(0,5);
-                            @endphp
+                            @foreach($mySchedules as $slot)
+                            @php $hhmm = \Illuminate\Support\Str::of($slot->time)->substr(0,5); @endphp
                             <option value="{{ $slot->id }}" @selected(old('schedule_option')==$slot->id)>
                                 {{ $dayLabels[$slot->day_of_week] }} — {{ $hhmm }}
                             </option>
@@ -92,8 +87,8 @@
                         @enderror
 
                         <p class="text-xs text-gray-500 mt-2">
-                            El post se programará para la <strong>próxima ocurrencia</strong> de ese día y hora (según
-                            tu zona horaria).
+                            Se programará para la <strong>próxima ocurrencia</strong> de ese día y hora (según tu zona
+                            horaria).
                         </p>
                         @else
                         <div
@@ -103,7 +98,6 @@
                         </div>
                         @endif
                     </div>
-
 
                     {{-- Contenido --}}
                     <div class="mb-6">
@@ -168,20 +162,24 @@
                             {{-- Campos extra Reddit (solo si hay Reddit seleccionado) --}}
                             <div class="grid md:grid-cols-2 gap-4 mt-3" x-show="reddit" x-cloak>
                                 <div>
-                                    <x-input-label for="reddit_subreddit" value="Subreddit" />
+                                    <x-input-label for="reddit_subreddit"
+                                        value="Subreddit o perfil (r/ejemplo o u/usuario)" />
                                     <x-text-input id="reddit_subreddit" name="reddit_subreddit" type="text"
                                         class="mt-1 block w-full" value="{{ old('reddit_subreddit') }}"
-                                        placeholder="ej. r/test o u_tu_usuario" />
+                                        placeholder="r/test o u/tu_usuario" />
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        Si lo dejas vacío, publicaremos en tu perfil (<code>u/tu_usuario</code>).
+                                    </p>
+                                </div>
+
+                                <div class="md:col-span-2">
+                                    <x-input-label for="title" value="Título (obligatorio en Reddit)" />
+                                    <x-text-input id="title" name="title" type="text" class="mt-1 block w-full"
+                                        x-bind:required="reddit" value="{{ old('title') }}" />
                                 </div>
 
                                 <div>
-                                    <x-input-label for="reddit_title" value="Título (obligatorio en Reddit)" />
-                                    <x-text-input id="reddit_title" name="reddit_title" type="text"
-                                        class="mt-1 block w-full" value="{{ old('reddit_title') }}" />
-                                </div>
-
-                                <div>
-                                    <x-input-label for="reddit_kind" value="Tipo" />
+                                    <x-input-label for="reddit_kind" value="Tipo (controla si muestras link)" />
                                     <select id="reddit_kind" name="reddit_kind"
                                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                                         x-model="kind">
@@ -193,35 +191,20 @@
                                 </div>
 
                                 <div class="md:col-span-2" x-show="kind === 'link'">
-                                    <x-input-label for="reddit_url" value="URL del enlace" />
-                                    <x-text-input id="reddit_url" name="reddit_url" type="url" class="mt-1 block w-full"
-                                        value="{{ old('reddit_url') }}" placeholder="https://ejemplo.com" />
+                                    <x-input-label for="link" value="URL del enlace" />
+                                    <x-text-input id="link" name="link" type="url" class="mt-1 block w-full"
+                                        x-bind:required="reddit && kind === 'link'" value="{{ old('link') }}"
+                                        placeholder="https://ejemplo.com" />
                                     <p class="text-xs text-gray-500 mt-1">
-                                        Esta URL será el enlace principal del post.
+                                        Si completas este campo, el post de Reddit se enviará como “link”.
                                     </p>
-                                </div>
-
-                                <div class="md:col-span-2">
-                                    <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
-                                        <p class="text-sm text-blue-800 dark:text-blue-200 mb-1">
-                                            <strong>Tipos de post en Reddit:</strong>
-                                        </p>
-                                        <ul
-                                            class="text-xs text-blue-700 dark:text-blue-300 list-disc list-inside space-y-1">
-                                            <li><strong>self:</strong> Texto; si agregas una imagen en “URL de
-                                                imagen/video” se embebe en el cuerpo.</li>
-                                            <li><strong>link:</strong> Post de enlace a una URL externa.</li>
-                                        </ul>
-                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="flex justify-end">
-                        <x-primary-button x-text="mode === 'scheduled' ? 'Programar' : 'Publicar ahora'">
-                            Publicar
-                        </x-primary-button>
+                        <x-primary-button x-text="buttonText()">Publicar</x-primary-button>
                     </div>
                 </form>
                 @else
@@ -229,6 +212,7 @@
                     No tienes permisos para crear publicaciones.
                 </div>
                 @endcan
+
             </div>
         </div>
     </div>
@@ -236,7 +220,6 @@
     <script>
     document.addEventListener('alpine:init', () => {
         Alpine.data('postCreate', () => ({
-            // Valores restaurados con old()
             mode: @json(old('mode', 'now')),
             mediaUrl: @json(old('media_url')),
             reddit: false,
@@ -257,6 +240,12 @@
                 const clean = url.split('?')[0];
                 const ext = (clean.split('.').pop() || '').toLowerCase();
                 return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+            },
+
+            buttonText() {
+                if (this.mode === 'schedule') return 'Programar';
+                if (this.mode === 'queue') return 'Enviar a la cola';
+                return 'Publicar ahora';
             }
         }));
     });

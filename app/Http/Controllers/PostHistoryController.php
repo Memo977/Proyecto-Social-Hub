@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Post;
 use Illuminate\Http\Request;
+use Carbon\Carbon;
 
 class PostHistoryController extends Controller
 {
@@ -15,7 +16,7 @@ class PostHistoryController extends Controller
     public function history(Request $request)
     {
         // Policy general: ver posts del usuario
-        $this->authorize('viewAny', \App\Models\Post::class);
+        $this->authorize('viewAny', Post::class);
 
         $user = $request->user();
 
@@ -40,12 +41,12 @@ class PostHistoryController extends Controller
             });
         }
 
-        // Rango de fechas (sobre created_at)
+        // Rango de fechas (sobre created_at) usando límites del día
         if ($from = $request->input('from')) {
-            $q->where('created_at', '>=', $from);
+            $q->where('created_at', '>=', Carbon::parse($from)->startOfDay());
         }
         if ($to = $request->input('to')) {
-            $q->where('created_at', '<=', $to);
+            $q->where('created_at', '<=', Carbon::parse($to)->endOfDay());
         }
 
         // Estado (por defecto excluimos cola: queued/scheduled)
@@ -71,22 +72,21 @@ class PostHistoryController extends Controller
     }
 
     /**
-     * Pendientes en cola (queued|scheduled), ordenados por scheduled_at/created_at asc.
-     * Filtros: q, provider.
+     * Pendientes en cola (queued|scheduled).
+     * Filtros: q (texto), provider, from/to (sobre scheduled_at).
      */
     public function queue(Request $request)
     {
         // Policy general: ver posts del usuario
-        $this->authorize('viewAny', \App\Models\Post::class);
+        $this->authorize('viewAny', Post::class);
 
         $user = $request->user();
 
         $q = Post::with(['targets.socialAccount'])
             ->where('user_id', $user->id)
-            ->whereIn('status', ['queued', 'scheduled'])
-            ->orderByRaw('COALESCE(scheduled_at, created_at) asc')
-            ->orderBy('id', 'asc');
+            ->whereIn('status', ['queued', 'scheduled']);
 
+        // Texto
         if ($search = trim((string) $request->input('q'))) {
             $q->where(function ($qq) use ($search) {
                 $qq->where('content', 'like', "%{$search}%")
@@ -95,14 +95,35 @@ class PostHistoryController extends Controller
             });
         }
 
+        // Proveedor
         if ($provider = $request->input('provider')) {
             $q->whereHas('targets.socialAccount', function ($qq) use ($provider) {
                 $qq->where('provider', $provider);
             });
         }
 
+        // Fechas (sobre scheduled_at). Si hay al menos una, mostramos solo las que tienen fecha concreta.
+        $from = $request->input('from');
+        $to   = $request->input('to');
+        if ($from || $to) {
+            $q->whereNotNull('scheduled_at');
+            if ($from) {
+                $q->where('scheduled_at', '>=', Carbon::parse($from)->startOfDay());
+            }
+            if ($to) {
+                $q->where('scheduled_at', '<=', Carbon::parse($to)->endOfDay());
+            }
+        }
+
+        // Orden: primero con fecha (asc), luego las de "próximo horario" (scheduled_at null)
+        $q->orderByRaw('scheduled_at IS NULL')   // 0 (no nulo) primero, 1 (nulo) después
+          ->orderBy('scheduled_at', 'asc')
+          ->orderBy('created_at', 'asc')
+          ->orderBy('id', 'asc');
+
         $posts = $q->paginate(10)->withQueryString();
 
+        // Resumen por post
         $summaries = [];
         foreach ($posts as $post) {
             $summaries[$post->id] = $this->summarize($post);
