@@ -10,27 +10,29 @@ class ScheduleController extends Controller
 {
     public function __construct()
     {
-        // Aplica PublicationSchedulePolicy a las acciones del resource
         $this->authorizeResource(\App\Models\PublicationSchedule::class, 'schedule');
     }
 
+    /**
+     * Muestra la lista de horarios de publicación del usuario.
+     * Vista: schedules.index (Horarios de Publicación)
+     *
+     * @return \Illuminate\View\View
+     */
     public function index()
     {
         $user = auth()->user();
 
-        // Horarios del usuario, ordenados
-        $byDow = \App\Models\PublicationSchedule::query()
+        $byDow = PublicationSchedule::query()
             ->where('user_id', $user->id)
-            ->orderBy('day_of_week') // 0=Dom, 1=Lun, ..., 6=Sáb (Carbon)
+            ->orderBy('day_of_week')
             ->orderBy('time')
             ->get()
             ->groupBy('day_of_week');
 
-        // Orden visual: L K M J V S D  => Carbon: 1,2,3,4,5,6,0
         $columnOrder = [1, 2, 3, 4, 5, 6, 0];
-        $headers = ['L', 'K', 'M', 'J', 'V', 'S', 'D'];
+        $headers = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
-        // Columnas: cada día es una lista de modelos (para tener id + time)
         $columns = [];
         $maxRows = 0;
 
@@ -40,12 +42,11 @@ class ScheduleController extends Controller
             $maxRows = max($maxRows, $items->count());
         }
 
-        // Filas: i-ésimo elemento de cada día (o null)
         $rows = [];
         for ($i = 0; $i < $maxRows; $i++) {
             $row = [];
             foreach ($columns as $items) {
-                $row[] = $items[$i] ?? null; // modelo PublicationSchedule o null
+                $row[] = $items[$i] ?? null;
             }
             $rows[] = $row;
         }
@@ -53,15 +54,25 @@ class ScheduleController extends Controller
         return view('schedules.index', compact('headers', 'rows'));
     }
 
+    /**
+     * Muestra el formulario para crear un nuevo horario.
+     * Vista: schedules.create (Crear Horario)
+     *
+     * @return \Illuminate\View\View
+     */
     public function create()
     {
         return view('schedules.create');
     }
 
+    /**
+     * Almacena un nuevo horario de publicación.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function store(Request $request)
     {
-        // Policy: create() se valida automáticamente via authorizeResource
-
         $validated = $request->validate([
             'day_of_week' => ['required', 'integer', 'between:0,6'],
             'time' => [
@@ -73,6 +84,13 @@ class ScheduleController extends Controller
                         ->where('day_of_week', $request->day_of_week)
                 ),
             ],
+        ], [
+            'day_of_week.required' => 'El día de la semana es obligatorio.',
+            'day_of_week.integer' => 'El día de la semana debe ser un número entero.',
+            'day_of_week.between' => 'El día de la semana debe estar entre 0 (Domingo) y 6 (Sábado).',
+            'time.required' => 'La hora es obligatoria.',
+            'time.date_format' => 'La hora debe estar en formato HH:MM.',
+            'time.unique' => 'Ya existe un horario para ese día y hora.',
         ]);
 
         $validated['user_id'] = auth()->id();
@@ -83,16 +101,27 @@ class ScheduleController extends Controller
             ->with('success', 'Horario creado correctamente.');
     }
 
+    /**
+     * Muestra el formulario para editar un horario existente.
+     * Vista: schedules.edit (Editar Horario)
+     *
+     * @param PublicationSchedule $schedule
+     * @return \Illuminate\View\View
+     */
     public function edit(PublicationSchedule $schedule)
     {
-        // Policy: 'update' ya es resuelta por authorizeResource en rutas de edición
         return view('schedules.edit', compact('schedule'));
     }
 
+    /**
+     * Actualiza un horario de publicación existente.
+     *
+     * @param Request $request
+     * @param PublicationSchedule $schedule
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function update(Request $request, PublicationSchedule $schedule)
     {
-        // Policy: 'update' ya se valida automáticamente via authorizeResource
-
         $validated = $request->validate([
             'day_of_week' => ['required', 'integer', 'between:0,6'],
             'time' => [
@@ -104,20 +133,32 @@ class ScheduleController extends Controller
                         ->where('day_of_week', $request->day_of_week)
                 ),
             ],
+        ], [
+            'day_of_week.required' => 'El día de la semana es obligatorio.',
+            'day_of_week.integer' => 'El día de la semana debe ser un número entero.',
+            'day_of_week.between' => 'El día de la semana debe estar entre 0 (Domingo) y 6 (Sábado).',
+            'time.required' => 'La hora es obligatoria.',
+            'time.date_format' => 'La hora debe estar en formato HH:MM.',
+            'time.unique' => 'Ya existe un horario para ese día y hora.',
         ]);
 
         $schedule->update($validated);
 
         return redirect()->route('schedules.index')
-            ->with('success', 'Horario actualizado.');
+            ->with('success', 'Horario actualizado correctamente.');
     }
 
+    /**
+     * Elimina un horario de publicación.
+     *
+     * @param PublicationSchedule $schedule
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function destroy(PublicationSchedule $schedule)
     {
-        // Policy: 'delete' ya se valida automáticamente via authorizeResource
         $schedule->delete();
 
         return redirect()->route('schedules.index')
-            ->with('success', 'Horario eliminado.');
+            ->with('success', 'Horario eliminado correctamente.');
     }
 }

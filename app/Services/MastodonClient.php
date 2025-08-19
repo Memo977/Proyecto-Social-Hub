@@ -7,10 +7,17 @@ use Carbon\Carbon;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Cliente para interactuar con la API de Mastodon.
+ */
 class MastodonClient
 {
+    /** @var Client Cliente HTTP para realizar solicitudes. */
     private Client $http;
 
+    /**
+     * Crea una nueva instancia del cliente.
+     */
     public function __construct()
     {
         $this->http = new Client([
@@ -19,8 +26,10 @@ class MastodonClient
     }
 
     /**
-     * Asegura que el access_token sea válido. Si está vencido y
-     * existe refresh_token, lo renueva contra la instancia del usuario.
+     * Asegura que el token de acceso sea válido, refrescándolo si es necesario.
+     *
+     * @param SocialAccount $account Cuenta social de Mastodon.
+     * @return void
      */
     public function ensureValidToken(SocialAccount $account): void
     {
@@ -29,17 +38,16 @@ class MastodonClient
         }
 
         if ($account->expires_at && $account->expires_at->isFuture()) {
-            return; // token aún válido
+            return;
         }
 
         if (!$account->refresh_token) {
-            // No hay refresh; nada que hacer
             return;
         }
 
         $instance = rtrim($account->instance_domain ?? config('services.mastodon.domain', ''), '/');
         if (empty($instance)) {
-            Log::warning('MastodonClient: instance_domain vacío para refresh', ['account_id' => $account->id]);
+            Log::warning('Dominio de instancia vacío para refrescar token.', ['account_id' => $account->id]);
             return;
         }
 
@@ -47,16 +55,16 @@ class MastodonClient
         $clientSecret = config('services.mastodon.client_secret');
 
         if (!$clientId || !$clientSecret) {
-            Log::warning('MastodonClient: faltan client_id/secret en config para refresh');
+            Log::warning('Faltan client_id o client_secret en la configuración para refrescar token.');
             return;
         }
 
         try {
             $resp = $this->http->post($instance . '/oauth/token', [
                 'form_params' => [
-                    'grant_type'    => 'refresh_token',
+                    'grant_type' => 'refresh_token',
                     'refresh_token' => $account->refresh_token,
-                    'client_id'     => $clientId,
+                    'client_id' => $clientId,
                     'client_secret' => $clientSecret,
                 ],
                 'headers' => [
@@ -75,30 +83,37 @@ class MastodonClient
             }
             $account->save();
         } catch (\Throwable $e) {
-            Log::warning('MastodonClient: fallo al refrescar token', [
+            Log::warning('Fallo al refrescar token.', [
                 'account_id' => $account->id,
                 'error' => $e->getMessage(),
             ]);
         }
     }
 
+    /**
+     * Publica un estado en Mastodon.
+     *
+     * @param SocialAccount $account Cuenta social de Mastodon.
+     * @param array $payload Datos del estado a publicar.
+     * @return array Respuesta de la API.
+     */
     public function postStatus(SocialAccount $account, array $payload): array
     {
         $this->ensureValidToken($account);
 
         $instance = rtrim($account->instance_domain ?? config('services.mastodon.domain', ''), '/');
         if (empty($instance)) {
-            throw new \RuntimeException('Dominio de instancia Mastodon vacío');
+            throw new \RuntimeException('Dominio de instancia Mastodon vacío.');
         }
 
         $resp = $this->http->post($instance . '/api/v1/statuses', [
             'headers' => [
                 'Authorization' => 'Bearer ' . $account->access_token,
-                'Accept'        => 'application/json',
+                'Accept' => 'application/json',
             ],
             'form_params' => [
-                'status'       => $payload['status'] ?? '',
-                'visibility'   => $payload['visibility'] ?? 'public',
+                'status' => $payload['status'] ?? '',
+                'visibility' => $payload['visibility'] ?? 'public',
                 'scheduled_at' => $payload['scheduled_at'] ?? null,
             ],
         ]);

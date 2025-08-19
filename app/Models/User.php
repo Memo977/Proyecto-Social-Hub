@@ -7,15 +7,17 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+/**
+ * Modelo para representar un usuario autenticable en el sistema.
+ */
 class User extends Authenticatable implements MustVerifyEmail
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
     /**
-     * The attributes that are mass assignable.
+     * Atributos que pueden ser asignados masivamente.
      *
-     * @var list<string>
+     * @var array
      */
     protected $fillable = [
         'name',
@@ -24,9 +26,9 @@ class User extends Authenticatable implements MustVerifyEmail
     ];
 
     /**
-     * The attributes that should be hidden for serialization.
+     * Atributos que deben ocultarse durante la serialización.
      *
-     * @var list<string>
+     * @var array
      */
     protected $hidden = [
         'password',
@@ -36,31 +38,45 @@ class User extends Authenticatable implements MustVerifyEmail
     ];
 
     /**
-     * Get the attributes that should be cast.
+     * Definición de los tipos de datos para los atributos.
      *
-     * @return array<string, string>
+     * @return array
      */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-
             'two_factor_enabled' => 'boolean',
             'two_factor_confirmed_at' => 'datetime',
         ];
     }
 
+    /**
+     * Obtiene las cuentas sociales asociadas al usuario.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
     public function socialAccounts()
     {
         return $this->hasMany(\App\Models\SocialAccount::class);
     }
 
+    /**
+     * Obtiene los posts creados por el usuario.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
     public function posts()
     {
         return $this->hasMany(\App\Models\Post::class);
     }
 
+    /**
+     * Obtiene los horarios de publicación del usuario.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
     public function publicationSchedules()
     {
         return $this->hasMany(\App\Models\PublicationSchedule::class);

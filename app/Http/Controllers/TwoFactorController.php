@@ -9,6 +9,12 @@ use Illuminate\Support\Str;
 
 class TwoFactorController extends Controller
 {
+    /**
+     * Muestra la vista para gestionar la autenticación de dos factores.
+     *
+     * @param Request $request
+     * @return \Illuminate\View\View
+     */
     public function show(Request $request)
     {
         $user = $request->user();
@@ -27,19 +33,30 @@ class TwoFactorController extends Controller
         return view('profile.two-factor', compact('user', 'secret', 'otpauth'));
     }
 
+    /**
+     * Habilita la autenticación de dos factores para el usuario.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function enable(Request $request)
     {
-        $request->validate(['password' => ['required', 'current_password']]);
+        $request->validate([
+            'password' => ['required', 'current_password'],
+        ], [
+            'password.required' => 'La contraseña es obligatoria.',
+            'password.current_password' => 'La contraseña proporcionada no coincide con la actual.',
+        ]);
+
         $user = $request->user();
 
         if ($user->two_factor_enabled) {
-            return back()->with('status', '2FA ya estaba activado.');
+            return back()->with('status', 'La autenticación de dos factores ya está habilitada.');
         }
 
         $google2fa = app('pragmarx.google2fa');
         $secret = $google2fa->generateSecretKey(32);
 
-        // Generar recovery codes pero NO mostrarlos hasta confirmación
         $codes = collect(range(1, 8))->map(function () {
             $plain = Str::upper(Str::random(10));
             return ['plain' => $plain, 'hash' => Hash::make($plain)];
@@ -52,25 +69,35 @@ class TwoFactorController extends Controller
             'two_factor_enabled' => false,
         ])->save();
 
-        // NO mostrar códigos aquí, solo al confirmar
-        return back()->with('status', 'Escanea el QR y confirma con un código OTP.');
+        return back()->with('status', 'Escanea el código QR y confirma con un código OTP.');
     }
 
+    /**
+     * Confirma la activación de la autenticación de dos factores.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function confirm(Request $request)
     {
-        $request->validate(['code' => ['required', 'digits:6']]);
+        $request->validate([
+            'code' => ['required', 'digits:6'],
+        ], [
+            'code.required' => 'El código OTP es obligatorio.',
+            'code.digits' => 'El código OTP debe tener exactamente 6 dígitos.',
+        ]);
+
         $user = $request->user();
 
-        abort_unless($user->two_factor_secret, 403);
+        abort_unless($user->two_factor_secret, 403, 'No se ha configurado un secreto para la autenticación de dos factores.');
 
         $secret = Crypt::decryptString($user->two_factor_secret);
         $valid = app('pragmarx.google2fa')->verifyKey($secret, $request->input('code'));
 
-        if (! $valid) {
-            return back()->withErrors(['code' => 'Código inválido.']);
+        if (!$valid) {
+            return back()->withErrors(['code' => 'El código OTP proporcionado es inválido.']);
         }
 
-        // REGENERAR códigos frescos para mostrar solo al confirmar por primera vez
         $codes = collect(range(1, 8))->map(function () {
             $plain = Str::upper(Str::random(10));
             return ['plain' => $plain, 'hash' => Hash::make($plain)];
@@ -82,36 +109,41 @@ class TwoFactorController extends Controller
             'two_factor_enabled' => true,
         ])->save();
 
-        // Solo mostrar códigos en este momento crítico
         session()->flash('two_factor_plain_codes', $codes->pluck('plain')->values());
 
-        return back()->with('status', '2FA activado. ¡Asegúrate de guardar tus códigos de recuperación!');
+        return back()->with('status', 'Autenticación de dos factores habilitada. Asegúrate de guardar tus códigos de recuperación.');
     }
 
     /**
-     * VERSIÓN SEGURA: Regenerar recovery codes requiere verificación OTP
+     * Regenera los códigos de recuperación, requiriendo verificación OTP.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function regenerateRecoveryCodes(Request $request)
     {
         $request->validate([
             'password' => ['required', 'current_password'],
-            'verification_code' => ['required', 'digits:6'], // Solo OTP de 6 dígitos
+            'verification_code' => ['required', 'digits:6'],
+        ], [
+            'password.required' => 'La contraseña es obligatoria.',
+            'password.current_password' => 'La contraseña proporcionada no coincide con la actual.',
+            'verification_code.required' => 'El código OTP es obligatorio.',
+            'verification_code.digits' => 'El código OTP debe tener exactamente 6 dígitos.',
         ]);
 
         $user = $request->user();
-        abort_unless($user->two_factor_enabled, 403);
+        abort_unless($user->two_factor_enabled, 403, 'La autenticación de dos factores no está habilitada.');
 
-        // Verificar que es un código OTP válido (NO recovery codes)
         $secret = Crypt::decryptString($user->two_factor_secret);
         $isValidOTP = app('pragmarx.google2fa')->verifyKey($secret, $request->input('verification_code'));
 
         if (!$isValidOTP) {
             return back()->withErrors([
-                'verification_code' => 'Código OTP inválido. Solo se acepta código de 6 dígitos de tu authenticator.'
+                'verification_code' => 'El código OTP proporcionado es inválido. Usa el código de 6 dígitos de tu aplicación de autenticación.',
             ]);
         }
 
-        // Generar nuevos recovery codes
         $codes = collect(range(1, 8))->map(function () {
             $plain = Str::upper(Str::random(10));
             return ['plain' => $plain, 'hash' => Hash::make($plain)];
@@ -123,46 +155,51 @@ class TwoFactorController extends Controller
 
         session()->flash('two_factor_plain_codes', $codes->pluck('plain')->values());
 
-        return back()->with('status', 'Nuevos recovery codes generados.');
+        return back()->with('status', 'Nuevos códigos de recuperación generados.');
     }
 
     /**
-     * VERSIÓN SEGURA: Desactivar 2FA requiere verificación OTP O recovery code
+     * Deshabilita la autenticación de dos factores, requiriendo OTP o código de recuperación.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function disable(Request $request)
     {
         $request->validate([
             'password' => ['required', 'current_password'],
             'verification_code' => ['required', 'string', 'min:6'],
+        ], [
+            'password.required' => 'La contraseña es obligatoria.',
+            'password.current_password' => 'La contraseña proporcionada no coincide con la actual.',
+            'verification_code.required' => 'El código de verificación es obligatorio.',
+            'verification_code.min' => 'El código de verificación debe tener al menos 6 caracteres.',
         ]);
 
         $user = $request->user();
-        abort_unless($user->two_factor_enabled, 403);
+        abort_unless($user->two_factor_enabled, 403, 'La autenticación de dos factores no está habilitada.');
 
         $verificationCode = $request->input('verification_code');
         $isValid = false;
         $codeType = null;
 
-        // Opción 1: Verificar si es un código OTP de 6 dígitos
         if (preg_match('/^\d{6}$/', $verificationCode)) {
             $secret = Crypt::decryptString($user->two_factor_secret);
             $isValid = app('pragmarx.google2fa')->verifyKey($secret, $verificationCode);
             if ($isValid) $codeType = 'otp';
         }
 
-        // Opción 2: Si no es válido como OTP, verificar si es un recovery code
         if (!$isValid && $user->two_factor_recovery_codes) {
             $recoveryCodes = collect($user->two_factor_recovery_codes);
-            
+
             foreach ($recoveryCodes as $index => $hashedCode) {
                 if (Hash::check(strtoupper($verificationCode), $hashedCode)) {
                     $isValid = true;
                     $codeType = 'recovery';
 
-                    // Remover el recovery code usado (un solo uso)
                     $recoveryCodes->forget($index);
                     $user->forceFill([
-                        'two_factor_recovery_codes' => $recoveryCodes->values()
+                        'two_factor_recovery_codes' => $recoveryCodes->values(),
                     ])->save();
 
                     break;
@@ -172,11 +209,10 @@ class TwoFactorController extends Controller
 
         if (!$isValid) {
             return back()->withErrors([
-                'verification_code' => 'Código de verificación inválido. Usa un código OTP de tu authenticator o un recovery code.'
+                'verification_code' => 'El código de verificación es inválido. Usa un código OTP de tu aplicación de autenticación o un código de recuperación.',
             ]);
         }
 
-        // Si llegamos aquí, la verificación fue exitosa
         $user->forceFill([
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
@@ -184,15 +220,19 @@ class TwoFactorController extends Controller
             'two_factor_enabled' => false,
         ])->save();
 
-        $message = $codeType === 'recovery' 
-            ? '2FA desactivado exitosamente usando recovery code.' 
-            : '2FA desactivado exitosamente.';
+        $message = $codeType === 'recovery'
+            ? 'Autenticación de dos factores desactivada usando un código de recuperación.'
+            : 'Autenticación de dos factores desactivada correctamente.';
 
         return back()->with('status', $message);
     }
 
     /**
-     * MÉTODO AUXILIAR: Verificar códigos OTP
+     * Verifica un código OTP.
+     *
+     * @param mixed $user
+     * @param string $code
+     * @return bool
      */
     private function verifyOTPCode($user, $code)
     {
@@ -205,7 +245,11 @@ class TwoFactorController extends Controller
     }
 
     /**
-     * MÉTODO AUXILIAR: Verificar recovery codes
+     * Verifica un código de recuperación.
+     *
+     * @param mixed $user
+     * @param string $code
+     * @return bool
      */
     private function verifyRecoveryCode($user, $code)
     {

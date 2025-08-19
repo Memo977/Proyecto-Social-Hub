@@ -20,6 +20,12 @@ class PostController extends Controller
         $this->middleware(['auth', 'verified']);
     }
 
+    /**
+     * Muestra el formulario para crear una nueva publicación.
+     * Vista: posts.create (Crear Publicación)
+     *
+     * @return \Illuminate\View\View
+     */
     public function create()
     {
         $user = Auth::user();
@@ -47,6 +53,12 @@ class PostController extends Controller
         ]);
     }
 
+    /**
+     * Almacena una nueva publicación.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -60,9 +72,23 @@ class PostController extends Controller
             'targets'          => ['nullable', 'array'],
             'reddit_subreddit' => ['nullable', 'string', 'max:100'],
             'reddit_kind'      => ['nullable', Rule::in(['self', 'link'])],
+        ], [
+            'content.required' => 'El contenido de la publicación es obligatorio.',
+            'content.string' => 'El contenido debe ser una cadena de texto.',
+            'content.max' => 'El contenido no puede exceder los 1000 caracteres.',
+            'title.string' => 'El título debe ser una cadena de texto.',
+            'title.max' => 'El título no puede exceder los 255 caracteres.',
+            'media_url.url' => 'La URL del medio debe ser válida.',
+            'link.url' => 'El enlace debe ser una URL válida.',
+            'mode.required' => 'El modo de publicación es obligatorio.',
+            'mode.in' => 'El modo de publicación seleccionado no es válido.',
+            'scheduled_at.date' => 'La fecha programada debe ser una fecha válida.',
+            'schedule_option.integer' => 'La opción de horario debe ser un número entero.',
+            'reddit_subreddit.string' => 'El subreddit debe ser una cadena de texto.',
+            'reddit_subreddit.max' => 'El subreddit no puede exceder los 100 caracteres.',
+            'reddit_kind.in' => 'El tipo de publicación de Reddit debe ser "self" o "link".',
         ]);
 
-        // ✅ Validación condicional para Reddit si el usuario selecciona una cuenta de Reddit
         $selectedIds = $validated['targets'] ?? [];
         if (!empty($selectedIds)) {
             $selectedAccounts = SocialAccount::whereIn('id', $selectedIds)->get();
@@ -72,6 +98,11 @@ class PostController extends Controller
                     'reddit_subreddit' => ['required', 'string', 'max:100'],
                     'title'            => ['required', 'string', 'max:300'],
                     'reddit_kind'      => ['required', Rule::in(['self', 'link'])],
+                ], [
+                    'reddit_subreddit.required' => 'El subreddit es obligatorio para publicaciones en Reddit.',
+                    'title.required' => 'El título es obligatorio para publicaciones en Reddit.',
+                    'title.max' => 'El título no puede exceder los 300 caracteres para Reddit.',
+                    'reddit_kind.required' => 'El tipo de publicación de Reddit es obligatorio.',
                 ]);
             }
         }
@@ -83,17 +114,12 @@ class PostController extends Controller
             'media_url'    => $validated['media_url'] ?? null,
             'link'         => $validated['link'] ?? null,
             'mode'         => $validated['mode'],
-
-            // ✅ Estados iniciales coherentes:
-            //   schedule -> scheduled | now -> pending | queue -> queued
             'status'       => $validated['mode'] === 'schedule'
                 ? 'scheduled'
                 : ($validated['mode'] === 'now' ? 'pending' : 'queued'),
-
             'scheduled_at' => null,
         ]);
 
-        // Guardar meta.reddit.* (subreddit, kind y opcionalmente title)
         $sr   = $this->normalizeSr($request->input('reddit_subreddit'));
         $kind = $request->input('reddit_kind', 'self');
 
@@ -102,16 +128,15 @@ class PostController extends Controller
             data_set($meta, 'reddit.title', $request->input('title'));
         }
         $meta['reddit'] = array_merge($meta['reddit'] ?? [], [
-            'subreddit' => $sr,      // p.ej. "programming" o "u_tuUsuario"
-            'kind'      => $kind,    // informativo; el Job usa link/self según $post->link
+            'subreddit' => $sr,
+            'kind'      => $kind,
         ]);
         $post->meta = $meta;
         $post->save();
 
-        // Crear targets (sólo seleccionados; si no, todas las cuentas del usuario)
         $rawTargets = $request->input('targets', []);
         if (!is_array($rawTargets)) {
-            $rawTargets = [$rawTargets]; // fuerza array cuando viene solo un valor
+            $rawTargets = [$rawTargets];
         }
 
         $targetIds = collect($rawTargets)
@@ -132,7 +157,6 @@ class PostController extends Controller
             ]);
         }
 
-        // Programar exacto
         if ($validated['mode'] === 'schedule') {
             $when = null;
 
@@ -146,16 +170,14 @@ class PostController extends Controller
                     ->first();
 
                 if ($opt) {
-                    /** @var NextRunService $nextRun */
                     $nextRun = app(NextRunService::class);
-                    // requiere que NextRunService tenga nextFromSchedule()
                     $when = $nextRun->nextFromSchedule($opt) ?? now()->addMinute();
                 }
             }
 
             if (!$when) {
                 return back()->withErrors([
-                    'schedule_option' => 'Selecciona un horario válido o proporciona una fecha/hora.'
+                    'schedule_option' => 'Selecciona un horario válido o proporciona una fecha y hora.',
                 ])->withInput();
             }
 
@@ -168,12 +190,10 @@ class PostController extends Controller
             }
 
             $whenTxt = $when->timezone(config('app.timezone', 'UTC'))->format('d/m/Y H:i');
-            return redirect()->route('dashboard')->with('status', "¡Post programado para el $whenTxt!");
+            return redirect()->route('dashboard')->with('status', "Publicación programada para el $whenTxt.");
         }
 
-        // A la cola
         if ($validated['mode'] === 'queue') {
-            /** @var NextRunService $nextRun */
             $nextRun = app(NextRunService::class);
             $when = $nextRun->nextForUser(Auth::id()) ?? now()->addMinute();
 
@@ -185,22 +205,28 @@ class PostController extends Controller
             }
 
             $whenTxt = $when->timezone(config('app.timezone', 'UTC'))->format('d/m/Y H:i');
-            return redirect()->route('dashboard')->with('status', "¡Post enviado a la cola para el $whenTxt!");
+            return redirect()->route('dashboard')->with('status', "Publicación enviada a la cola para el $whenTxt.");
         }
 
-        // Publicar ahora
         foreach ($post->targets as $t) {
             PublishPost::dispatch($post->id, $t->id);
         }
 
-        return redirect()->route('dashboard')->with('status', '¡Post enviado a publicar!');
+        return redirect()->route('dashboard')->with('status', 'Publicación enviada para publicación inmediata.');
     }
 
+    /**
+     * Muestra el formulario para editar una publicación existente.
+     * Vista: posts.edit (Editar Publicación)
+     *
+     * @param Post $post
+     * @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse
+     */
     public function edit(Post $post)
     {
         $this->authorize('update', $post);
         if (!$post->isEditable()) {
-            return redirect()->route('posts.queue')->with('error', 'Esta publicación ya no se puede editar.');
+            return redirect()->route('posts.queue')->with('error', 'Esta publicación ya no puede editarse.');
         }
 
         $user = Auth::user();
@@ -229,12 +255,19 @@ class PostController extends Controller
         ]);
     }
 
+    /**
+     * Actualiza una publicación existente.
+     *
+     * @param Request $request
+     * @param Post $post
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function update(Request $request, Post $post)
     {
         $this->authorize('update', $post);
 
         if (!$post->isEditable()) {
-            return redirect()->route('posts.queue')->with('error', 'Esta publicación ya no se puede editar.');
+            return redirect()->route('posts.queue')->with('error', 'Esta publicación ya no puede editarse.');
         }
 
         $validated = $request->validate([
@@ -248,6 +281,21 @@ class PostController extends Controller
             'targets'          => ['nullable', 'array'],
             'reddit_subreddit' => ['nullable', 'string', 'max:100'],
             'reddit_kind'      => ['nullable', Rule::in(['self', 'link'])],
+        ], [
+            'content.required' => 'El contenido de la publicación es obligatorio.',
+            'content.string' => 'El contenido debe ser una cadena de texto.',
+            'content.max' => 'El contenido no puede exceder los 1000 caracteres.',
+            'title.string' => 'El título debe ser una cadena de texto.',
+            'title.max' => 'El título no puede exceder los 255 caracteres.',
+            'media_url.url' => 'La URL del medio debe ser válida.',
+            'link.url' => 'El enlace debe ser una URL válida.',
+            'mode.required' => 'El modo de publicación es obligatorio.',
+            'mode.in' => 'El modo de publicación seleccionado no es válido.',
+            'scheduled_at.date' => 'La fecha programada debe ser una fecha válida.',
+            'schedule_option.integer' => 'La opción de horario debe ser un número entero.',
+            'reddit_subreddit.string' => 'El subreddit debe ser una cadena de texto.',
+            'reddit_subreddit.max' => 'El subreddit no puede exceder los 100 caracteres.',
+            'reddit_kind.in' => 'El tipo de publicación de Reddit debe ser "self" o "link".',
         ]);
 
         $post->fill([
@@ -257,7 +305,6 @@ class PostController extends Controller
             'link'      => $validated['link'] ?? null,
         ])->save();
 
-        // Actualizar meta.reddit si viene en la edición (incluye title)
         $meta = $post->meta ?? [];
         $changedMeta = false;
 
@@ -279,7 +326,6 @@ class PostController extends Controller
             $post->save();
         }
 
-        // (Opcional) actualizar targets si se reenvían en la edición
         $targetsChanged = false;
         if ($request->has('targets')) {
             $ids = collect($request->input('targets', []))->map('intval');
@@ -312,13 +358,12 @@ class PostController extends Controller
                     $when = $nrs->nextOccurrenceFromDowAndTime((int)$slot->day_of_week, (string)$slot->time);
                 }
             } else {
-                // 🚩 Sin cambios explícitos: conservar la hora previa si existe
                 $when = $oldWhen;
             }
 
             if (!$when) {
                 return back()->withErrors([
-                    'schedule_option' => 'Selecciona un horario válido, proporciona una fecha/hora o deja la existente.'
+                    'schedule_option' => 'Selecciona un horario válido, proporciona una fecha y hora o conserva la existente.',
                 ])->withInput();
             }
 
@@ -326,7 +371,6 @@ class PostController extends Controller
             $post->scheduled_at = $when;
             $post->save();
 
-            // Solo re-despacha si cambió la hora o cambiaron los targets
             $shouldRedispatch = !$oldWhen || !$oldWhen->equalTo($when) || $targetsChanged;
             if ($shouldRedispatch) {
                 foreach ($post->targets as $t) {
@@ -342,7 +386,6 @@ class PostController extends Controller
             $nrs = app(NextRunService::class);
             $oldWhen = $post->scheduled_at ? Carbon::parse($post->scheduled_at) : null;
 
-            // 🚩 Mantener la hora si ya existe y es futura; si no, calcular la siguiente
             if ($oldWhen && $oldWhen->isFuture()) {
                 $when = $oldWhen;
             } else {
@@ -353,7 +396,6 @@ class PostController extends Controller
             $post->scheduled_at = $when;
             $post->save();
 
-            // Solo re-despacha si la hora cambió o cambiaron los targets
             $shouldRedispatch = !$oldWhen || !$oldWhen->equalTo($when) || $targetsChanged;
             if ($shouldRedispatch) {
                 foreach ($post->targets as $t) {
@@ -365,7 +407,6 @@ class PostController extends Controller
             return redirect()->route('posts.queue')->with('status', "Publicación actualizada y en cola para el $whenTxt.");
         }
 
-        // now
         $post->status       = 'queued';
         $post->scheduled_at = null;
         $post->save();
@@ -374,34 +415,43 @@ class PostController extends Controller
             PublishPost::dispatch($post->id, $t->id);
         }
 
-        return redirect()->route('posts.history')->with('status', 'Publicación actualizada y enviada inmediatamente.');
+        return redirect()->route('posts.history')->with('status', 'Publicación actualizada y enviada para publicación inmediata.');
     }
 
+    /**
+     * Cancela o elimina una publicación.
+     *
+     * @param Post $post
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function destroy(Post $post)
     {
         $this->authorize('delete', $post);
 
         if (!$post->isDeletable()) {
-            return redirect()->back()->with('error', 'Esta publicación ya no se puede eliminar.');
+            return redirect()->back()->with('error', 'Esta publicación ya no puede eliminarse.');
         }
 
         $post->canceled_at = now();
-        $post->status      = 'canceled'; // opcional
+        $post->status      = 'canceled';
         $post->save();
 
-        return redirect()->route('posts.queue')->with('status', 'Publicación cancelada/eliminada correctamente.');
+        return redirect()->route('posts.queue')->with('status', 'Publicación cancelada correctamente.');
     }
 
-    /** Normaliza formatos admitidos:
-     *  "r/test", "/r/test", "https://reddit.com/r/test" => "test"
-     *  "u/usuario" o "https://reddit.com/u/usuario"     => "u_usuario"
+    /**
+     * Normaliza el formato del subreddit.
+     * Ejemplos: "r/test", "/r/test", "https://reddit.com/r/test" => "test"
+     *           "u/usuario" o "https://reddit.com/u/usuario" => "u_usuario"
+     *
+     * @param ?string $sr
+     * @return ?string
      */
     private function normalizeSr(?string $sr): ?string
     {
         if (!$sr) return null;
         $sr = trim($sr);
 
-        // Quitar dominio si lo trae
         $sr = preg_replace('#^https?://(www\.)?reddit\.com/#i', '', $sr);
         $sr = ltrim($sr, '/');
 
@@ -417,7 +467,6 @@ class PostController extends Controller
             return $user ? 'u_' . $user : null;
         }
 
-        // Si viene vacío tras limpiar, null
         return $sr !== '' ? $sr : null;
     }
 }

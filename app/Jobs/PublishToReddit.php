@@ -13,45 +13,60 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
+/**
+ * Job para publicar un post en Reddit.
+ */
 class PublishToReddit implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /** @var int ID del post */
     public int $postId;
+
+    /** @var int ID del target */
     public int $targetId;
 
+    /**
+     * Crea una nueva instancia del job.
+     *
+     * @param int $postId ID del post
+     * @param int $targetId ID del target
+     */
     public function __construct(int $postId, int $targetId)
     {
-        $this->postId   = $postId;
+        $this->postId = $postId;
         $this->targetId = $targetId;
     }
 
+    /**
+     * Ejecuta el job, publicando el post en Reddit.
+     *
+     * @return void
+     */
     public function handle(): void
     {
         $post = Post::find($this->postId);
         if (!$post || $post->canceled_at) {
-            Log::info('PublishToReddit: post cancelado o no encontrado', ['post_id' => $this->postId]);
+            Log::info('Post cancelado o no encontrado.', ['post_id' => $this->postId]);
             return;
         }
 
         $target = PostTarget::find($this->targetId);
         if (!$target || !$target->socialAccount) {
-            Log::warning('PublishToReddit: target/account no encontrado', ['target_id' => $this->targetId]);
+            Log::warning('Target o cuenta social no encontrada.', ['target_id' => $this->targetId]);
             return;
         }
 
-        // ✅ 1) Evita reprocesar si ya cambió de estado (seguro y no rompe nada)
         if ($target->status !== 'pending') {
-            Log::info('PublishToReddit: skip; target no está pending', [
+            Log::info('Target no está en estado pendiente, se omitirá.', [
                 'target_id' => $target->id,
-                'status'    => $target->status,
+                'status' => $target->status
             ]);
             return;
         }
 
         $account = $target->socialAccount;
 
-        // ✅ 2) Lee primero del meta del post; si falta, cae al meta de la cuenta (compatible con lo anterior)
         $subreddit = data_get($post->meta, 'reddit.subreddit')
             ?? data_get($account->meta, 'subreddit')
             ?? data_get($account->meta, 'sr')
@@ -60,78 +75,93 @@ class PublishToReddit implements ShouldQueue
         if (!$subreddit) {
             $target->update([
                 'status' => 'failed',
-                'error'  => 'Falta subreddit (ni en el post.meta ni en la cuenta).',
+                'error' => 'No se especificó un subreddit en los metadatos del post o de la cuenta.'
             ]);
-            Log::warning('PublishToReddit: falta subreddit', [
-                'post_id'    => $post->id,
-                'account_id' => $account->id,
+            Log::warning('No se especificó un subreddit.', [
+                'post_id' => $post->id,
+                'account_id' => $account->id
             ]);
             return;
         }
 
         try {
-            /** @var \App\Services\RedditClient $client */
             $client = app(\App\Services\RedditClient::class);
 
-            // Mantén tu lógica: si hay link => 'link', si no => 'self'
-            $title   = $post->title ?: \Illuminate\Support\Str::limit((string) $post->content, 250);
+            $title = $post->title ?: Str::limit((string) $post->content, 250);
             $hasLink = !empty($post->link);
 
             $payload = [
-                'sr'           => $subreddit,
-                'title'        => $title,
-                'kind'         => $hasLink ? 'link' : 'self',
-                'text'         => $hasLink ? null : (string) $post->content,
-                'url'          => $hasLink ? (string) $post->link : null,
-                'sendreplies'  => true,
-                'nsfw'         => data_get($post->meta, 'nsfw', false),
-                'spoiler'      => data_get($post->meta, 'spoiler', false),
+                'sr' => $subreddit,
+                'title' => $title,
+                'kind' => $hasLink ? 'link' : 'self',
+                'text' => $hasLink ? null : (string) $post->content,
+                'url' => $hasLink ? (string) $post->link : null,
+                'sendreplies' => true,
+                'nsfw' => data_get($post->meta, 'nsfw', false),
+                'spoiler' => data_get($post->meta, 'spoiler', false),
             ];
 
             $resp = $client->submitPost($account, $payload);
 
             $target->update([
-                'status'           => 'published',
+                'status' => 'published',
                 'provider_post_id' => $resp['id'] ?? null,
-                'published_at'     => now(),
-                'error'            => null,
+                'published_at' => now(),
+                'error' => null,
             ]);
 
             $this->maybeMarkPostAsPublished($post);
-            Log::info('PublishToReddit: OK', ['post_id' => $post->id, 'id' => $resp['id'] ?? null]);
+            Log::info('Publicación en Reddit exitosa.', [
+                'post_id' => $post->id,
+                'id' => $resp['id'] ?? null
+            ]);
         } catch (\Throwable $e) {
             $target->update([
                 'status' => 'failed',
-                'error'  => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
-            Log::error('PublishToReddit: error', ['post_id' => $this->postId, 'error' => $e->getMessage()]);
+            Log::error('Error al publicar en Reddit.', [
+                'post_id' => $this->postId,
+                'error' => $e->getMessage()
+            ]);
         }
     }
 
+    /**
+     * Marca el post como publicado si todos los targets están completos.
+     *
+     * @param Post $post
+     * @return void
+     */
     protected function maybeMarkPostAsPublished(Post $post): void
     {
-        $total     = $post->targets()->count();
+        $total = $post->targets()->count();
         $published = $post->targets()->where('status', 'published')->count();
-        $failed    = $post->targets()->where('status', 'failed')->count();
+        $failed = $post->targets()->where('status', 'failed')->count();
 
         if ($published > 0 && $published + $failed === $total) {
             $post->update([
-                'status'       => 'published',
+                'status' => 'published',
                 'published_at' => now(),
             ]);
         }
     }
 
-    /** Normaliza:
-     *  "r/test", "/r/test", "https://reddit.com/r/test" => "test"
-     *  "u/usuario" o "https://reddit.com/u/usuario"     => "u_usuario"
+    /**
+     * Normaliza el formato del subreddit.
+     * Ejemplo: "r/test", "/r/test", "https://reddit.com/r/test" => "test"
+     *          "u/usuario" o "https://reddit.com/u/usuario" => "u_usuario"
+     *
+     * @param string|null $sr
+     * @return string|null
      */
     private function normalizeSr(?string $sr): ?string
     {
-        if (!$sr) return null;
-        $sr = trim($sr);
+        if (!$sr) {
+            return null;
+        }
 
-        // Quitar dominio si viene completo
+        $sr = trim($sr);
         $sr = preg_replace('#^https?://(www\.)?reddit\.com/#i', '', $sr);
         $sr = ltrim($sr, '/');
 

@@ -12,7 +12,11 @@ use Illuminate\View\View;
 class ProfileController extends Controller
 {
     /**
-     * Display the user's profile form.
+     * Muestra el formulario para editar el perfil del usuario.
+     * Vista: profile.edit (Editar Perfil)
+     *
+     * @param Request $request
+     * @return View
      */
     public function edit(Request $request): View
     {
@@ -22,7 +26,10 @@ class ProfileController extends Controller
     }
 
     /**
-     * Update the user's profile information.
+     * Actualiza la información del perfil del usuario.
+     *
+     * @param ProfileUpdateRequest $request
+     * @return RedirectResponse
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
@@ -34,16 +41,22 @@ class ProfileController extends Controller
 
         $request->user()->save();
 
-        return Redirect::route('profile.edit')->with('status', 'profile-updated');
+        return Redirect::route('profile.edit')->with('status', 'Perfil actualizado correctamente.');
     }
 
     /**
-     * Delete the user's account.
+     * Elimina la cuenta del usuario.
+     *
+     * @param Request $request
+     * @return RedirectResponse
      */
     public function destroy(Request $request): RedirectResponse
     {
         $request->validateWithBag('userDeletion', [
             'password' => ['required', 'current_password'],
+        ], [
+            'password.required' => 'La contraseña es obligatoria.',
+            'password.current_password' => 'La contraseña proporcionada no coincide con la actual.',
         ]);
 
         $user = $request->user();

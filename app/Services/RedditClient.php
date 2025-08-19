@@ -8,38 +8,57 @@ use GuzzleHttp\Client;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Cliente para interactuar con la API de Reddit.
+ */
 class RedditClient
 {
+    /** @var Client Cliente HTTP para realizar solicitudes. */
     private Client $http;
+
+    /** @var string ID del cliente de Reddit. */
     private string $clientId;
+
+    /** @var string Secreto del cliente de Reddit. */
     private string $clientSecret;
+
+    /** @var string User-Agent para las solicitudes. */
     private string $userAgent;
 
+    /**
+     * Crea una nueva instancia del cliente.
+     */
     public function __construct()
     {
-        $this->clientId     = config('services.reddit.client_id');
+        $this->clientId = config('services.reddit.client_id');
         $this->clientSecret = config('services.reddit.client_secret');
-        $this->userAgent    = env('REDDIT_USER_AGENT', 'SocialHub/1.0 (Laravel)');
+        $this->userAgent = env('REDDIT_USER_AGENT', 'SocialHub/1.0 (Laravel)');
         $this->http = new Client([
             'timeout' => 20,
             'headers' => ['User-Agent' => $this->userAgent],
         ]);
     }
 
+    /**
+     * Asegura que el token de acceso sea válido, refrescándolo si es necesario.
+     *
+     * @param SocialAccount $account Cuenta social de Reddit.
+     * @return void
+     */
     public function ensureValidToken(SocialAccount $account): void
     {
-        // Si no hay expires_at o aún es válido, no hacemos nada
         if (!$account->expires_at || $account->expires_at->isFuture()) {
             return;
         }
+
         if (!$account->refresh_token) {
-            return; // no podemos refrescar, el usuario deberá reconectar
+            return;
         }
 
         $resp = $this->http->post('https://www.reddit.com/api/v1/access_token', [
             'auth' => [$this->clientId, $this->clientSecret],
             'form_params' => [
-                'grant_type'    => 'refresh_token',
+                'grant_type' => 'refresh_token',
                 'refresh_token' => $account->refresh_token,
             ],
         ])->getBody()->getContents();
@@ -50,41 +69,45 @@ class RedditClient
         if (isset($data['expires_in'])) {
             $account->expires_at = Carbon::now()->addSeconds((int) $data['expires_in']);
         }
-        // Reddit no devuelve refresh_token de nuevo; se mantiene el existente
         $account->save();
     }
 
     /**
-     * Envía un post 'self' o 'link' simple (sin RTJSON).
-     * - self: usa 'text'
-     * - link: usa 'url'
+     * Publica un post en Reddit (self o link).
+     *
+     * @param SocialAccount $account Cuenta social de Reddit.
+     * @param array $payload Datos del post a publicar.
+     * @return array Respuesta de la API.
      */
     public function submitPost(SocialAccount $account, array $payload): array
     {
         $this->ensureValidToken($account);
 
-        // Construir parámetros para /api/submit
         $params = [
-            'sr'          => Arr::get($payload, 'sr'),
-            'title'       => Arr::get($payload, 'title'),
-            'kind'        => Arr::get($payload, 'kind', 'self'), // self|link
-            'api_type'    => 'json',
-            'sendreplies' => Arr::get($payload, 'sendreplies', true) ? 'true' : 'false',
+            'sr' => Arr::get($payload, 'sr'),
+            'title' => Arr::get($payload, 'title'),
+            'kind' => Arr::get($payload, 'kind'),
+            'sendreplies' => Arr::get($payload, 'sendreplies', true),
+            'resubmit' => true,
+            'api_type' => 'json',
         ];
 
         if ($params['kind'] === 'self') {
-            $params['text'] = Arr::get($payload, 'text', '');
-        } else { // link
-            $params['url']  = Arr::get($payload, 'url', '');
+            $params['text'] = Arr::get($payload, 'text');
+        } elseif ($params['kind'] === 'link') {
+            $params['url'] = Arr::get($payload, 'url');
         }
 
-        if (Arr::get($payload, 'nsfw', false))    $params['nsfw']    = 'true';
-        if (Arr::get($payload, 'spoiler', false)) $params['spoiler'] = 'true';
+        if (Arr::get($payload, 'nsfw')) {
+            $params['nsfw'] = 'true';
+        }
+        if (Arr::get($payload, 'spoiler')) {
+            $params['spoiler'] = 'true';
+        }
 
         $resp = $this->http->post('https://oauth.reddit.com/api/submit', [
             'headers' => [
-                'Authorization' => 'bearer '.$account->access_token,
-                'User-Agent'    => $this->userAgent,
+                'Authorization' => 'bearer ' . $account->access_token,
             ],
             'form_params' => $params,
         ])->getBody()->getContents();
@@ -92,88 +115,102 @@ class RedditClient
         $data = json_decode($resp, true);
 
         if (!empty($data['json']['errors'])) {
-            Log::warning('Reddit submit errors', $data['json']['errors']);
-            throw new \RuntimeException('Error al publicar en Reddit');
+            Log::warning('Errores al publicar post en Reddit.', $data['json']['errors']);
+            throw new \RuntimeException('Error al publicar post en Reddit.');
         }
 
-        // Extraer ID de la publicación
-        $thing = $data['json']['data']['name'] ?? null; // p.ej. "t3_xxxxxx"
+        $thing = $data['json']['data']['name'] ?? null;
         return [
-            'id'   => $thing,
-            'url'  => $data['json']['data']['url'] ?? null,
+            'id' => $thing,
+            'url' => $data['json']['data']['url'] ?? null,
             'full' => $data,
         ];
     }
 
     /**
-     * Sube una imagen como "media asset" y retorna el asset_id.
+     * Sube una imagen a Reddit para usarla en un post.
+     *
+     * @param SocialAccount $account Cuenta social de Reddit.
+     * @param string $mediaUrl URL de la imagen a subir.
+     * @return string ID del asset subido.
      */
-    public function uploadMediaAsset(SocialAccount $account, string $filename, string $mime, string $binary): string
+    public function uploadImage(SocialAccount $account, string $mediaUrl): string
     {
         $this->ensureValidToken($account);
 
-        // 1) Pedir a Reddit los datos de subida
-        $resp = $this->http->post('https://oauth.reddit.com/api/media/asset.json', [
+        $resp = $this->http->post('https://oauth.reddit.com/api/v1/media/asset.json', [
             'headers' => [
-                'Authorization' => 'bearer '.$account->access_token,
-                'User-Agent'    => $this->userAgent,
+                'Authorization' => 'bearer ' . $account->access_token,
             ],
             'form_params' => [
-                'filepath' => $filename,
-                'mimetype' => $mime,
+                'filepath' => basename($mediaUrl),
+                'mimetype' => 'image/jpeg',
             ],
         ])->getBody()->getContents();
 
-        $data = json_decode($resp, true);
-        if (empty($data['args']['action']) || empty($data['args']['fields']) || empty($data['asset']['asset_id'])) {
-            Log::error('Reddit asset: respuesta inesperada', ['resp' => $data]);
-            throw new \RuntimeException('No se pudo iniciar la subida de media asset en Reddit');
+        $data = json_decode($resp, true)['args'] ?? [];
+
+        $uploadUrl = $data['action'] ?? null;
+        $fields = $data['fields'] ?? [];
+
+        if (!$uploadUrl || empty($fields)) {
+            throw new \RuntimeException('Fallo al obtener URL de subida para imagen en Reddit.');
         }
 
-        $uploadUrl = $data['args']['action'];
-        $fields    = $data['args']['fields'];
-        $assetId   = $data['asset']['asset_id'];
+        $binary = file_get_contents($mediaUrl);
+        if ($binary === false) {
+            throw new \RuntimeException('Fallo al descargar imagen para subida a Reddit.');
+        }
 
-        // 2) Subir el binario a S3 con los campos firmados
+        $filename = basename($mediaUrl);
         $multipart = [];
+
         foreach ($fields as $f) {
             $multipart[] = ['name' => $f['name'], 'contents' => $f['value']];
         }
         $multipart[] = ['name' => 'file', 'contents' => $binary, 'filename' => $filename];
 
-        // Sube directo a S3 (sin auth de Reddit)
         (new Client(['timeout' => 30]))->post($uploadUrl, ['multipart' => $multipart]);
 
-        // 3) Reddit normalmente procesa el asset de inmediato
-        return $assetId;
+        return $data['asset_id'] ?? throw new \RuntimeException('No se obtuvo asset_id después de subida a Reddit.');
     }
 
     /**
-     * Publica un self-post con RTJSON (permite imagen embebida).
-     * $richDocument es el arreglo completo para 'richtext_json'.
+     * Publica un self-post con RTJSON en Reddit.
+     *
+     * @param SocialAccount $account Cuenta social de Reddit.
+     * @param string $subreddit Subreddit destino.
+     * @param string $title Título del post.
+     * @param array $richDocument Documento RTJSON.
+     * @param array $opts Opciones adicionales.
+     * @return array Respuesta de la API.
      */
     public function submitSelfWithRichtext(SocialAccount $account, string $subreddit, string $title, array $richDocument, array $opts = []): array
     {
         $this->ensureValidToken($account);
 
         $params = array_merge([
-            'sr'            => $subreddit,
-            'title'         => $title,
-            'kind'          => 'self',
-            'submit_type'   => 'rtjson',                   // fuerza interpretación RTJSON
+            'sr' => $subreddit,
+            'title' => $title,
+            'kind' => 'self',
+            'submit_type' => 'rtjson',
             'richtext_json' => json_encode(['document' => $richDocument]),
-            'sendreplies'   => true,
-            'resubmit'      => true,
-            'api_type'      => 'json',
+            'sendreplies' => true,
+            'resubmit' => true,
+            'api_type' => 'json',
         ], $opts);
 
-        if (!empty($opts['nsfw']))    $params['nsfw']    = 'true';
-        if (!empty($opts['spoiler'])) $params['spoiler'] = 'true';
+        if (!empty($opts['nsfw'])) {
+            $params['nsfw'] = 'true';
+        }
+        if (!empty($opts['spoiler'])) {
+            $params['spoiler'] = 'true';
+        }
 
         $resp = $this->http->post('https://oauth.reddit.com/api/submit', [
             'headers' => [
-                'Authorization' => 'bearer '.$account->access_token,
-                'User-Agent'    => $this->userAgent,
+                'Authorization' => 'bearer ' . $account->access_token,
+                'User-Agent' => $this->userAgent,
             ],
             'form_params' => $params,
         ])->getBody()->getContents();
@@ -181,14 +218,14 @@ class RedditClient
         $data = json_decode($resp, true);
 
         if (!empty($data['json']['errors'])) {
-            Log::warning('Reddit submit (self rtjson) errors', $data['json']['errors']);
-            throw new \RuntimeException('Error al publicar self con RTJSON en Reddit');
+            Log::warning('Errores al publicar self-post con RTJSON en Reddit.', $data['json']['errors']);
+            throw new \RuntimeException('Error al publicar self-post con RTJSON en Reddit.');
         }
 
-        $thing = $data['json']['data']['name'] ?? null; // p.ej. "t3_xxxxxx"
+        $thing = $data['json']['data']['name'] ?? null;
         return [
-            'id'   => $thing,
-            'url'  => $data['json']['data']['url'] ?? null,
+            'id' => $thing,
+            'url' => $data['json']['data']['url'] ?? null,
             'full' => $data,
         ];
     }

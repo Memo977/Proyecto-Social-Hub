@@ -9,13 +9,16 @@ use Carbon\Carbon;
 class PostHistoryController extends Controller
 {
     /**
-     * Histórico de publicaciones (enviadas).
-     * Soporta filtros: q (texto), provider (mastodon|reddit), status (published|failed),
-     * rango de fechas (from, to) sobre created_at.
+     * Muestra el historial de publicaciones enviadas.
+     * Soporta filtros: texto (q), proveedor (mastodon|reddit), estado (published|failed),
+     * y rango de fechas (from, to) sobre created_at.
+     * Vista: posts.history (Historial de Publicaciones)
+     *
+     * @param Request $request
+     * @return \Illuminate\View\View
      */
     public function history(Request $request)
     {
-        // Policy general: ver posts del usuario
         $this->authorize('viewAny', Post::class);
 
         $user = $request->user();
@@ -25,7 +28,6 @@ class PostHistoryController extends Controller
             ->orderByDesc('published_at')
             ->orderByDesc('id');
 
-        // Búsqueda texto
         if ($search = trim((string) $request->input('q'))) {
             $q->where(function ($qq) use ($search) {
                 $qq->where('content', 'like', "%{$search}%")
@@ -34,14 +36,12 @@ class PostHistoryController extends Controller
             });
         }
 
-        // Filtrar por proveedor
         if ($provider = $request->input('provider')) {
             $q->whereHas('targets.socialAccount', function ($qq) use ($provider) {
                 $qq->where('provider', $provider);
             });
         }
 
-        // Rango de fechas (sobre created_at) usando límites del día
         if ($from = $request->input('from')) {
             $q->where('created_at', '>=', Carbon::parse($from)->startOfDay());
         }
@@ -49,7 +49,6 @@ class PostHistoryController extends Controller
             $q->where('created_at', '<=', Carbon::parse($to)->endOfDay());
         }
 
-        // Estado (por defecto excluimos cola: queued/scheduled)
         if ($status = $request->input('status')) {
             if ($status === 'published') {
                 $q->where('status', 'published');
@@ -62,7 +61,6 @@ class PostHistoryController extends Controller
 
         $posts = $q->paginate(10)->withQueryString();
 
-        // Resumen por post (publicadas/fallidas/pendientes)
         $summaries = [];
         foreach ($posts as $post) {
             $summaries[$post->id] = $this->summarize($post);
@@ -72,12 +70,15 @@ class PostHistoryController extends Controller
     }
 
     /**
-     * Pendientes en cola (queued|scheduled).
-     * Filtros: q (texto), provider, from/to (sobre scheduled_at).
+     * Muestra las publicaciones pendientes en cola (queued|scheduled).
+     * Soporta filtros: texto (q), proveedor, y rango de fechas (from, to) sobre scheduled_at.
+     * Vista: posts.queue (Cola de Publicaciones)
+     *
+     * @param Request $request
+     * @return \Illuminate\View\View
      */
     public function queue(Request $request)
     {
-        // Policy general: ver posts del usuario
         $this->authorize('viewAny', Post::class);
 
         $user = $request->user();
@@ -86,7 +87,6 @@ class PostHistoryController extends Controller
             ->where('user_id', $user->id)
             ->whereIn('status', ['queued', 'scheduled']);
 
-        // Texto
         if ($search = trim((string) $request->input('q'))) {
             $q->where(function ($qq) use ($search) {
                 $qq->where('content', 'like', "%{$search}%")
@@ -95,14 +95,12 @@ class PostHistoryController extends Controller
             });
         }
 
-        // Proveedor
         if ($provider = $request->input('provider')) {
             $q->whereHas('targets.socialAccount', function ($qq) use ($provider) {
                 $qq->where('provider', $provider);
             });
         }
 
-        // Fechas (sobre scheduled_at). Si hay al menos una, mostramos solo las que tienen fecha concreta.
         $from = $request->input('from');
         $to   = $request->input('to');
         if ($from || $to) {
@@ -115,15 +113,13 @@ class PostHistoryController extends Controller
             }
         }
 
-        // Orden: primero con fecha (asc), luego las de "próximo horario" (scheduled_at null)
-        $q->orderByRaw('scheduled_at IS NULL')   // 0 (no nulo) primero, 1 (nulo) después
+        $q->orderByRaw('scheduled_at IS NULL')
           ->orderBy('scheduled_at', 'asc')
           ->orderBy('created_at', 'asc')
           ->orderBy('id', 'asc');
 
         $posts = $q->paginate(10)->withQueryString();
 
-        // Resumen por post
         $summaries = [];
         foreach ($posts as $post) {
             $summaries[$post->id] = $this->summarize($post);
@@ -133,7 +129,10 @@ class PostHistoryController extends Controller
     }
 
     /**
-     * Calcula un resumen por post a partir de sus targets.
+     * Calcula un resumen de los estados de los targets de una publicación.
+     *
+     * @param Post $post
+     * @return array
      */
     private function summarize(Post $post): array
     {
@@ -143,7 +142,6 @@ class PostHistoryController extends Controller
         $failed    = $targets->where('status', 'failed')->count();
         $pending   = max(0, $total - $published - $failed);
 
-        // overall
         $overall = 'pending';
         if ($total > 0 && $published === $total) {
             $overall = 'published';
