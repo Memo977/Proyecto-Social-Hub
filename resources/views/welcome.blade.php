@@ -25,16 +25,6 @@
         <a href="{{ url('/dashboard') }}" class="text-sm font-medium underline hover:no-underline">
             Dashboard
         </a>
-        @else
-        <a href="{{ route('login') }}" class="text-sm font-medium underline hover:no-underline">
-            Log in
-        </a>
-        @if (Route::has('register'))
-        <a href="{{ route('register') }}" class="inline-flex items-center px-3 py-1.5 rounded border text-sm
-                              border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800">
-            Register
-        </a>
-        @endif
         @endauth
     </div>
     @endif

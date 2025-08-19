@@ -31,8 +31,8 @@ class PostHistoryController extends Controller
         if ($search = trim((string) $request->input('q'))) {
             $q->where(function ($qq) use ($search) {
                 $qq->where('content', 'like', "%{$search}%")
-                   ->orWhere('title', 'like', "%{$search}%")
-                   ->orWhere('link', 'like', "%{$search}%");
+                    ->orWhere('title', 'like', "%{$search}%")
+                    ->orWhere('link', 'like', "%{$search}%");
             });
         }
 
@@ -50,12 +50,15 @@ class PostHistoryController extends Controller
         }
 
         if ($status = $request->input('status')) {
-            if ($status === 'published') {
-                $q->where('status', 'published');
-            } elseif ($status === 'failed') {
-                $q->where('status', 'failed');
+            if ($status === 'failed') {
+                $q->whereHas('targets', fn($qq) => $qq->where('status', 'failed'))
+                    ->whereDoesntHave('targets', fn($qq) => $qq->where('status', 'pending'));
+            } elseif ($status === 'published') {
+                $q->whereHas('targets')
+                    ->whereDoesntHave('targets', fn($qq) => $qq->whereIn('status', ['failed', 'pending']));
             }
         } else {
+            // Sin filtro de estado: excluye los que no te interesan a nivel Post
             $q->whereNotIn('status', ['queued', 'scheduled']);
         }
 
@@ -90,8 +93,8 @@ class PostHistoryController extends Controller
         if ($search = trim((string) $request->input('q'))) {
             $q->where(function ($qq) use ($search) {
                 $qq->where('content', 'like', "%{$search}%")
-                   ->orWhere('title', 'like', "%{$search}%")
-                   ->orWhere('link', 'like', "%{$search}%");
+                    ->orWhere('title', 'like', "%{$search}%")
+                    ->orWhere('link', 'like', "%{$search}%");
             });
         }
 
@@ -114,9 +117,9 @@ class PostHistoryController extends Controller
         }
 
         $q->orderByRaw('scheduled_at IS NULL')
-          ->orderBy('scheduled_at', 'asc')
-          ->orderBy('created_at', 'asc')
-          ->orderBy('id', 'asc');
+            ->orderBy('scheduled_at', 'asc')
+            ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc');
 
         $posts = $q->paginate(10)->withQueryString();
 
