@@ -1,0 +1,18 @@
+[Unit]
+Description=SocialHub Laravel Queue Worker
+After=network.target mysql.service mariadb.service
+
+[Service]
+User=vagrant
+Group=vagrant
+Restart=always
+RestartSec=2
+WorkingDirectory=/vagrant/sites/social-hub
+ExecStart=/usr/bin/php artisan queue:work --queue=default --tries=1 --timeout=90
+StandardOutput=append:/vagrant/sites/social-hub/storage/logs/queue.log
+StandardError=append:/vagrant/sites/social-hub/storage/logs/queue.err.log
+KillSignal=SIGINT
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -15,14 +15,14 @@ Incluye integración con **Mastodon** y **Reddit**, autenticación **2FA (TOTP)*
 
 ## Características principales
 
-- 🔑 **Breeze + 2FA (TOTP)** para seguridad
+- 🔑 **Breeze + 2FA (TOTP)** para seguridad  
 - 🌐 **OAuth** con:
   - Mastodon (instancia configurable)
   - Reddit (apps tipo *script*)
-- 🗓️ **Horarios** configurables por usuario
-- 📤 Modos de publicación: **now**, **scheduled**, **queue**
-- ⚙️ **Workers** con Laravel Queue (driver `database`)
-- 📊 Vistas para **pendientes** e **historial**
+- 🗓️ **Horarios** configurables por usuario  
+- 📤 Modos de publicación: **now**, **scheduled**, **queue**  
+- ⚙️ **Workers** con Laravel Queue (driver `database`)  
+- 📊 Vistas para **pendientes** e **historial**  
 
 ---
 
@@ -138,3 +138,86 @@ php artisan queue:work   # Worker de colas
 3. Abre un Pull Request describiendo el impacto.  
 
 ---
+
+## ⚙️ Automatización en VM (cron + worker)
+
+Para que las publicaciones **programadas** (scheduler/horarios) y las **instantáneas** (cola) se ejecuten automáticamente al encender la VM:
+
+### 1) Cron (scheduler cada minuto)
+
+**Archivo de referencia (en el repo):** `scripts/socialhub.cron`  
+Contenido sugerido:
+
+```cron
+# Social Hub - ejecutar scheduler de Laravel cada minuto
+* * * * * cd /vagrant/sites/social-hub && /usr/bin/php artisan schedule:run >> /vagrant/sites/social-hub/storage/logs/cron.log 2>&1
+```
+
+**Instalación en la VM (manual):**
+```bash
+# Dentro de la VM
+cd /vagrant/sites/social-hub
+crontab scripts/socialhub.cron
+crontab -l   # verificar que se cargó
+```
+
+> Asegúrate de que el archivo esté en formato **LF** y termine con una **línea en blanco**. Ajusta la ruta de PHP con `which php` si no es `/usr/bin/php`.
+
+### 2) systemd (worker de colas en background)
+
+**Archivo de referencia (en el repo):** `scripts/socialhub-queue.service`  
+Contenido sugerido:
+
+```ini
+[Unit]
+Description=SocialHub Laravel Queue Worker
+After=network.target mysql.service mariadb.service
+
+[Service]
+User=vagrant
+Group=vagrant
+Restart=always
+RestartSec=2
+WorkingDirectory=/vagrant/sites/social-hub
+ExecStart=/usr/bin/php artisan queue:work --queue=default --tries=1 --timeout=90
+StandardOutput=append:/vagrant/sites/social-hub/storage/logs/queue.log
+StandardError=append:/vagrant/sites/social-hub/storage/logs/queue.err.log
+KillSignal=SIGINT
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Instalación en la VM (manual):**
+```bash
+sudo cp scripts/socialhub-queue.service /etc/systemd/system/socialhub-queue.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now socialhub-queue
+sudo systemctl status socialhub-queue
+```
+
+### 3) Verificación rápida
+
+```bash
+# Cron / scheduler
+sudo systemctl status cron
+tail -f storage/logs/cron.log
+
+# Queue / worker
+sudo systemctl status socialhub-queue
+tail -f storage/logs/queue.log storage/logs/queue.err.log
+```
+
+> **Comportamiento esperado:**  
+> - **Instantáneas** → salen en segundos (worker de colas en systemd).  
+> - **Programadas/horarios** → se liberan cada minuto (cron ejecuta `schedule:run`).  
+
+---
+
+## Archivos de referencia incluidos en el repo (no son config del sistema)
+
+- `scripts/socialhub.cron` → plantilla para instalar con `crontab`.  
+- `scripts/socialhub-queue.service` → plantilla para copiar a `/etc/systemd/system/`.  
+
+> **No** se incluye en el repositorio el `crontab` real del usuario ni los archivos ya instalados en `/etc/systemd/system/`. Esos se configuran manualmente en la VM.
